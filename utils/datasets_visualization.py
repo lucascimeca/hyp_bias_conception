@@ -66,16 +66,11 @@ matplotlib.use('TkAgg')
 # dsc.show_tasks()
 
 ########## UTK Face dataset #################
+# Data
 dsc = UTKFaceCreator(data_path='./../data/', filename='UTKFace.h5')
 dsc.get_dataset_fvar(
     number_of_samples=10000,
-    features_variants=('object_number', 'color'),
-    object_number=(0, 4),
-    color=(0, 4),
-    shape=(0, 3),
-    scale=(0.5, 1),
-    orientation=(0, 2 * np.pi),
-    x_position=(0, 1),
-    y_position=(0, 1),
+    features_variants=('ethnicity', 'age'),
+    resize=(64, 64)
 )
 dsc.show_tasks()

@@ -70,37 +70,11 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             global best_acc, global_step
 
             # Data
-            print('==> Preparing dataset dsprites ')
-            if dsc is None:
-                if 'bw' in args.dataset:
-                    dsc = BWDSpritesCreator(
-                        data_path="./data/",
-                        filename="dsprites.npz"
-                    )
-                elif 'multicolor' in args.dataset:
-                    # experiments'scale', 'object_number'),
-                    dsc = MultiColorDSpritesCreator(
-                        data_path='./data/',
-                        filename="multi_color_dsprites.h5"
-                    )
-                elif 'color' in args.dataset:
-                    dsc = ColorDSpritesCreator(
-                        data_path='./data/',
-                        filename="color_dsprites.h5"
-                    )
-                elif 'multi' in args.dataset:
-                    # experiments
-                    dsc = MultiDSpritesCreator(
-                        data_path='./data/',
-                        filename="multi_bwdsprites.h5"
-                    )
-                else:
-                    raise NotImplementedError(args.dataset)
-
             resize = None
-            # if args.arch.endswith('vit'):
-            #     resize = (224, 224)
+            if 'face' in args.dataset:
+                resize = (64, 64)
 
+            print('==> Preparing dataset dsprites ')
             round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
                 number_of_samples=10000,
                 features_variants=experiments[exp_key],
@@ -119,36 +93,30 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             # Model
             print("==> creating model '{}'".format(args.arch))
-            if args.arch.startswith('wrn'):
-                model = WideResNet(
-                    num_classes=num_classes,
-                    depth=args.depth,
-                    widen_factor=args.widen_factor,
-                    dropRate=args.drop,
-                )
-            elif args.arch.endswith('resnet'):
+            if 'color' in args.dataset or 'face' in args.dataset:
+                no_of_channels = 3
+            else:
+                no_of_channels = 1
+
+            if args.arch.endswith('resnet'):
                 model = ResNet(
                     num_classes=num_classes,
                     depth=args.depth,
-                    no_of_channels=3 if 'color' in args.dataset else 1
+                    no_of_channels=no_of_channels
                 )
             elif args.arch.endswith('convnet'):
                 model = ConvNet(
                     num_classes=num_classes,
-                    no_of_channels=3 if 'color' in args.dataset else 1)
+                    no_of_channels=no_of_channels)
             elif args.arch.endswith('ffnet'):
                 model = FFNet(
                     num_classes=num_classes,
-                    no_of_channels=3 if 'color' in args.dataset else 1)
+                    no_of_channels=no_of_channels)
             elif args.arch.endswith('vit'):
                 model = VisionTransformer(
                     img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
                     norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes,
-                    in_chans=3 if 'color' in args.dataset else 1)
-                # args.train_batch = round(args.train_batch/3)
-                # args.test_batch = round(args.test_batch/3)
-
-
+                    in_chans=no_of_channels)
             else:
                 raise NotImplementedError()
 
@@ -358,7 +326,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='bw', type=str, help='bw, color or multi supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color or multi supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -378,7 +346,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -462,9 +430,19 @@ if __name__ == '__main__':
             data_path='./data/',
             filename="multi_bwdsprites.h5"
         )
+    elif 'face' in args.dataset:
+        combinations = itertools.combinations(['age', 'gender', 'ethnicity'], 2)
+        experiments = {}
+        for comb in combinations:
+            key = "_".join([str_elem.replace('_', '-') for str_elem in comb])
+            experiments[key] = comb
+        experiments['age_gender_ethnicity'] = ('age', 'gender', 'ethnicity')
+        dsc = UTKFaceCreator(
+            data_path='./data/',
+            filename='UTKFace.h5'
+        )
     else:
         raise NotImplementedError(args.dataset)
-
 
     try:
         run_experiment(args,
