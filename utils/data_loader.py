@@ -102,64 +102,7 @@ class DSpritesFeatureDataset(Dataset):
         return self.indeces[idx]
 
 
-# class DSpritesSequenceFeatureDataset(Dataset):
-#
-#     def __init__(self, dataset, latents, classes, indeces, no_of_feature_lvs, latent_to_idx, task_dict, feature,
-#                  resize=None, sequence_length=6, creator=None):
-#         self.dataset = dataset
-#         self.latents = latents
-#         self.classes = classes
-#         self.indeces = sorted(indeces)
-#         self.no_of_feature_lvs = no_of_feature_lvs
-#         self.latent_to_idx = latent_to_idx
-#         self.task_dict = task_dict
-#         self.feature = feature
-#         self.resize = resize
-#         self.sequence_length = sequence_length
-#         self.creator = creator
-#
-#         # labels
-#         self.labels = np.zeros((self.classes.shape[0]))
-#         for lv in range(self.no_of_feature_lvs):
-#             same_cell_condition = self.classes[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]
-#             self.labels[same_cell_condition] = lv
-#
-#     def __len__(self):
-#         return len(self.indeces)
-#
-#     def __getitem__(self, idx):
-#         if torch.is_tensor(idx):
-#             idx = idx.tolist()
-#
-#
-#         img_latent_classes = self.classes[self.indeces[idx]]
-#         feature_class = img_latent_classes[self.latent_to_idx[self.feature]]
-#         feature_class = self.labels[self.indeces[idx]]
-#         sequence_latents = np.zeros((self.sequence_length,) + img_latents.shape)
-#         for i in range(self.sequence_length):
-#             sequence_latents[i, :] = img_latents
-#             feature_class = (feature_class + 1) % self.no_of_feature_lvs
-#             sample_indeces += []
-#
-#         self.dataset['imgs'] = self.creator._latent_to_index(sample_latents)
-#         #todo sort by feature
-#
-#         if self.resize is not None:
-#             tensor_x = torch.Tensor(transform.resize(self.dataset['imgs'][self.indeces[idx]], self.resize))
-#         else:
-#             tensor_x = torch.Tensor(self.dataset['imgs'][self.indeces[idx]])
-#
-#         if len(self.dataset['imgs'].shape) == 3:
-#             tensor_x = tensor_x.unsqueeze(0).contiguous()
-#         else:
-#             tensor_x = tensor_x.permute((2, 0, 1)).contiguous()
-#
-#         tensor_y = torch.Tensor([self.labels[self.indeces[idx]]]).to(dtype=torch.long)
-#
-#         return tensor_x, tensor_y
-
-
-class DSpritesCreator:
+class FeatureCombinationCreator:
     latents_ranges = {
         'color': (0, 1),
         'shape': (0, 3),
@@ -239,8 +182,6 @@ class DSpritesCreator:
 
         # Define number of values per latents and functions to convert to indices
         self.latents_bases = np.concatenate((self.latents_sizes[::-1].cumprod()[::-1][1:], np.array([1, ])))
-
-        # self.torch_dataset = self.get_dataset()
 
     def _latent_to_index(self, latents):
         return np.dot(latents, self.latents_bases).astype(int)
@@ -327,6 +268,7 @@ class DSpritesCreator:
         self.no_of_feature_lvs = min(
             self.latents_sizes[i] for i in [self.latent_to_idx[latent] for latent in self.feature_variants])
         self.task_dict = {feature: {} for feature in self.feature_variants}
+
         for feature in self.task_dict.keys():
             self.task_dict[feature] = [round(x) for x in
                                        np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
@@ -563,7 +505,7 @@ class DSpritesCreator:
         return True
 
 
-class BWDSpritesCreator(DSpritesCreator):
+class BWDSpritesCreator(FeatureCombinationCreator):
 
     latents_sizes = np.array([1,  3,  6, 40, 32, 32])
 
@@ -572,7 +514,7 @@ class BWDSpritesCreator(DSpritesCreator):
         self.cmap = 'Greys_r'
 
 
-class ColorDSpritesCreator(DSpritesCreator):
+class ColorDSpritesCreator(FeatureCombinationCreator):
 
     latents_sizes = np.array([4, 3, 6, 40, 32, 32])
 
@@ -581,7 +523,7 @@ class ColorDSpritesCreator(DSpritesCreator):
         self.cmap = None
 
 
-class MultiDSpritesCreator(DSpritesCreator):
+class MultiDSpritesCreator(FeatureCombinationCreator):
 
     latents_ranges = {
         'object_number': (0, 4),
@@ -617,7 +559,8 @@ class MultiDSpritesCreator(DSpritesCreator):
         super().__init__(data_path, filename)
         self.cmap = None
 
-class MultiColorDSpritesCreator(DSpritesCreator):
+
+class MultiColorDSpritesCreator(FeatureCombinationCreator):
 
     latents_ranges = {
         'object_number': (0, 4),
@@ -649,6 +592,201 @@ class MultiColorDSpritesCreator(DSpritesCreator):
 
     latents_sizes = np.array([4, 4, 3, 6, 40, 32, 32])
 
-    def __init__(self, data_path="./data/", filename='multi_color_dsprites.h5'):
+    def __init__(self, data_path="./data/", filename='UTKFace.h5'):
         super().__init__(data_path, filename)
         self.cmap = None
+
+
+class UTKFaceCreator(FeatureCombinationCreator):
+    latents_ranges = {
+        'identity': (0, 4),
+        'age': (0, 120),
+        'gender': (0, 2),
+        'ethnicity': (0, 5),
+    }
+    idx_to_latent = {
+        0: 'identity',
+        1: 'age',
+        2: 'gender',
+        3: 'ethnicity',
+    }
+    latent_to_idx = {
+        'identity': 0,
+        'age': 1,
+        'gender': 2,
+        'scale': 3,
+        'ethnicity': 4,
+    }
+
+    latents_sizes = np.array([4, 4, 3, 6, 40, 32, 32])
+
+    def __init__(self, data_path="./data/", filename='multi_color_dsprites.h5'):
+        super().__init__(data_path, filename)
+        self.latents_sizes = self.dataset['latents_sizes']
+        self.cmap = None
+
+
+    def get_dataset_fvar(self, number_of_samples='all', train_split=0.7, valid_split=0.2,
+                         features_variants=('shape', 'scale'), resize=None, **latent_factors):
+        """
+        The function creates two round of dsprites datasets based on two varying features.
+        The first round is based on the main diagonal, when varying the two features (the number of variations is
+        decided based on which feature has the lowest number of levels). The second round is based off the offdiagonal,
+        this depends on which task we wish to solve, i.e. if based on feature 1 or feature 2, thus two datasets will be
+        contained within the second round datasets.
+
+        :param tuple(int, int) resize: parameter to resize input image
+        :param number_of_samples: (int) number of unique samples to pick from dsprites dataset. Can be set to "all"
+                                        to get the full dataset
+        :param train_split: (float) proportion of training data. Used for all returned datasets.
+        :param valid_split: (float) proportion of validation data. Used for all returned datasets.
+        :param features_variants: tuple(str, str) name of features to use for label matrix
+        :param latent_factors: additional into. It allows to specify ranges to consider for each feature
+                               (see _sample_latent).
+        :return: (dict, dict) two dictionaries containing the datasets for round one and round two.
+        """
+
+        self.feature_variants = features_variants
+        # ----- create combination of features for first and second training -----
+        self.no_of_feature_lvs = min(
+            self.latents_sizes[i] for i in [self.latent_to_idx[latent] for latent in self.feature_variants])
+        self.task_dict = {feature: {} for feature in self.feature_variants}
+
+        for feature in self.task_dict.keys():
+            self.task_dict[feature] = [round(x) for x in
+                                       np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
+                                                   self.no_of_feature_lvs)]
+
+        # ----- Create train set, second train set and valid set ---
+        # Sample latents randomly  -> for all datasets
+        all_latents = self._sample_latent(size=self.dataset['imgs'].shape[0], latent_factors=latent_factors)
+
+        # Find corresponding indeces
+        all_indeces = self._latent_to_index(all_latents)
+
+        # first train set is the feature combination matrix diagonal (linearize booleans for faster conditioning)
+        diag_condition = np.array([False] * self.dataset['imgs'].shape[0])  # initialize boolens for "OR" chain
+        for lv in range(self.no_of_feature_lvs):
+            same_cell_condition = np.array([True] * self.dataset['imgs'].shape[0])  # initialize boolens for "AND" chain
+            for feature in self.feature_variants:
+                same_cell_condition &= all_latents[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # AND
+            diag_condition |= same_cell_condition  # OR
+
+        # extract diagonal and off-diagonal dataset elements
+        diag_indeces = all_indeces[diag_condition]
+        offdiag_indeces = all_indeces[np.logical_not(diag_condition)]
+
+        # sample if you want less samples
+        if isinstance(number_of_samples, int):
+            if len(diag_indeces) > number_of_samples:
+                choice = np.random.choice(len(diag_indeces), size=number_of_samples)
+                diag_indeces = diag_indeces[choice]
+            elif len(diag_indeces) < number_of_samples:
+                print(
+                    "Warning: {} samples for the main diagonal could not be found in the dataset, "
+                    "{} are being used instead.".format(
+                        number_of_samples, len(diag_indeces)))
+                number_of_samples = len(diag_indeces)
+            if len(offdiag_indeces) > number_of_samples:
+                choice = np.random.choice(len(offdiag_indeces), size=number_of_samples)
+                offdiag_indeces = offdiag_indeces[choice]
+            elif len(offdiag_indeces) < number_of_samples:
+                print(
+                    "Warning: {} samples for the off diagonal could not be found in the dataset, "
+                    "{} are being used instead.".format(
+                        number_of_samples, len(offdiag_indeces)))
+
+        train_size = round(train_split * diag_indeces.shape[0])
+        val_size = round(valid_split * diag_indeces.shape[0])
+        test_size = diag_indeces.shape[0] - train_size - val_size
+
+        # ----------  create round one dataset ----------
+
+        ro_train_idx, ro_valid_idx, ro_test_idx = torch.utils.data.random_split(
+            diag_indeces, [train_size, val_size, test_size]
+        )
+
+        self.round_one_dataset = {
+            'train': DSpritesFeatureDataset(
+                indeces=ro_train_idx,
+                dataset=self.dataset,
+                latents=self.latents_values,
+                classes=self.latents_classes,
+                resize=resize,
+                no_of_feature_lvs=self.no_of_feature_lvs,
+                latent_to_idx=self.latent_to_idx,
+                task_dict=self.task_dict,
+                feature=self.feature_variants[0],  # doesn't matter within diag indeces
+            ),
+            'valid': DSpritesFeatureDataset(
+                indeces=ro_valid_idx,
+                dataset=self.dataset,
+                latents=self.latents_values,
+                classes=self.latents_classes,
+                resize=resize,
+                no_of_feature_lvs=self.no_of_feature_lvs,
+                latent_to_idx=self.latent_to_idx,
+                task_dict=self.task_dict,
+                feature=self.feature_variants[0]  # doesn't matter within diag indeces
+            ),
+            'test': DSpritesFeatureDataset(
+                indeces=ro_test_idx,
+                dataset=self.dataset,
+                latents=self.latents_values,
+                classes=self.latents_classes,
+                resize=resize,
+                no_of_feature_lvs=self.no_of_feature_lvs,
+                latent_to_idx=self.latent_to_idx,
+                task_dict=self.task_dict,
+                feature=self.feature_variants[0]  # doesn't matter within diag indeces
+            ),
+        }
+        print("Created Training Dataset")
+
+        # ----------  create round two dataset ----------
+        # train on off diagonal (train split), test on off diag, by task
+
+        rt_train_idx, rt_valid_idx, rt_test_idx = torch.utils.data.random_split(
+            offdiag_indeces, [train_size, val_size, test_size]
+        )
+        self.round_two_datasets = {}
+        for fn, feature in enumerate(self.feature_variants):
+            self.round_two_datasets[feature] = {
+                'train': DSpritesFeatureDataset(
+                    indeces=rt_train_idx,
+                    dataset=self.dataset,
+                    latents=self.latents_values,
+                    classes=self.latents_classes,
+                    resize=resize,
+                    no_of_feature_lvs=self.no_of_feature_lvs,
+                    latent_to_idx=self.latent_to_idx,
+                    task_dict=self.task_dict,
+                    feature=feature
+                ),
+                'valid': DSpritesFeatureDataset(
+                    indeces=rt_valid_idx,
+                    dataset=self.dataset,
+                    latents=self.latents_values,
+                    classes=self.latents_classes,
+                    resize=resize,
+                    no_of_feature_lvs=self.no_of_feature_lvs,
+                    latent_to_idx=self.latent_to_idx,
+                    task_dict=self.task_dict,
+                    feature=feature
+                ),
+                'test': DSpritesFeatureDataset(
+                    indeces=rt_test_idx,
+                    dataset=self.dataset,
+                    latents=self.latents_values,
+                    classes=self.latents_classes,
+                    resize=resize,
+                    no_of_feature_lvs=self.no_of_feature_lvs,
+                    latent_to_idx=self.latent_to_idx,
+                    task_dict=self.task_dict,
+                    feature=feature
+                ),
+            }
+
+            print("Created Dataset for task '{}' ({}/{})".format(feature, fn+1, len(self.feature_variants)))
+
+        return self.round_one_dataset, self.round_two_datasets
