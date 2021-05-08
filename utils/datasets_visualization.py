@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib
 
 # import matplotlib.pyplot as plt
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 
 ########## regular DSprites #################
 # dsc = BWDSpritesCreator(data_path='./../data/')

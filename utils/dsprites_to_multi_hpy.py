@@ -5,7 +5,7 @@ import time
 import matplotlib
 
 import matplotlib.pyplot as plt
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 
 from itertools import islice
 from utils.simple_io import *

@@ -98,7 +98,7 @@ class FeatureDataset(Dataset):
 
         tensor_y = torch.Tensor([self.labels[self.indeces[idx]]]).to(dtype=torch.long)
 
-        return tensor_x, tensor_y
+        return self.labels[self.indeces[idx]], tensor_x, tensor_y
 
     def get_original_index(self, idx):
         return self.indeces[idx]
@@ -288,7 +288,7 @@ class FeatureCombinationCreator:
             same_cell_condition = np.array([True] * self.dataset['imgs'].shape[0])  # initialize boolens for "AND" chain
             for feature in self.feature_variants:
                 same_cell_condition &= all_latents[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # AND
-            diag_condition |= same_cell_condition  # OR
+            diag_condition |= same_cell_condition
 
         # extract diagonal and off-diagonal dataset elements
         diag_indeces = all_indeces[diag_condition]
@@ -375,6 +375,9 @@ class FeatureCombinationCreator:
 
         self.round_two_datasets = {}
         for fn, feature in enumerate(self.feature_variants):
+            train_size = round(train_split * offdiag_indeces[feature].shape[0])
+            val_size = round(valid_split * offdiag_indeces[feature].shape[0])
+            test_size = offdiag_indeces[feature].shape[0] - train_size - val_size
             rt_train_idx, rt_valid_idx, rt_test_idx = torch.utils.data.random_split(
                 offdiag_indeces[feature], [train_size, val_size, test_size]
             )
@@ -449,7 +452,7 @@ class FeatureCombinationCreator:
         ax.set_yticks([])
         plt.show()
 
-    def show_tasks(self, ):
+    def show_tasks(self):
 
         features = list(self.task_dict.keys())[:2]
 
@@ -641,6 +644,7 @@ class UTKFaceCreator(FeatureCombinationCreator):
         }
 
         self.latents_ranges = {}
+        self.latents_sizes = np.array([0, 0, 0, 0])
         for latent in self.latent_to_idx.keys():
             class_max = max(self.dataset['latents_classes'][:, self.latent_to_idx[latent]]) + 1
             self.latents_ranges[latent] = (0, class_max)

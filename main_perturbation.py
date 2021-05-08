@@ -19,6 +19,7 @@ import traceback
 import itertools
 
 import nsml
+import copy
 import numpy as np
 import models as models
 from models.convnet import ConvNet
@@ -40,7 +41,6 @@ NSML = True
 TENSORBOARD_FOLDER = "./runs/"
 
 
-best_accuracies = {}  # best test accuracy
 global_step = 0
 
 
@@ -63,7 +63,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
     web_browser_opened = False
     folder_create(TENSORBOARD_FOLDER, exist_ok=True)
-
+    weight_states_to_save = []
     for exp_key in experiments.keys():
         sample_no = 0
         while sample_no < samples:
@@ -81,12 +81,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 resize=resize,
                 train_split=0.5,
                 valid_split=0.3,
-                color=(0, 4) if 'color' in args.dataset else (0, 1),
-                shape=(0, 3),
-                scale=(0.5, 1),
-                orientation=(0, 2 * np.pi),
-                x_position=(0, 1),
-                y_position=(0, 1),
             )
 
             num_classes = dsc.no_of_feature_lvs
@@ -196,7 +190,9 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     web_browser_opened = True
 
             # Train and val round one
+            best_accuracies = {}  # best test accuracy
             start_time = time.time()
+            patience_cnt = 0
             for epoch in range(args.epochs):
 
                 adjust_learning_rate(optimizer, epoch, args)
@@ -246,7 +242,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 for task in testloaders.keys():
                     folder = "{}{}/".format(logs_folder, task)
                     test_loss, test_acc = test(testloaders[task], model, criterion,
-                                               save=epoch==args.epochs-1,
+                                               save=epoch == args.epochs-1,
                                                folder=folder)
                     test_reports_loss['test__loss_'+task] = test_loss
                     test_reports_acc['test__acc_'+task] = test_acc
@@ -272,7 +268,23 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
                 # if any task improved then save
                 if update:
+                    patience_cnt = 0
                     nsml.save(global_step)
+                    weight_states_to_save += [copy.deepcopy(model.state_dict())]
+                    if len(weight_states_to_save) >= 3:
+                        weight_states_to_save = weight_states_to_save[-3:]
+                else:
+                    patience_cnt += 1
+
+                if patience_cnt >= args.patience or epoch == args.epochs-1:
+                    for j, weights in enumerate(weight_states_to_save):
+                        torch.save(weights, '{}weights-{}-{}-{}.pth'.format(
+                            logs_folder,
+                            exp_key,
+                            sample_no,
+                            epoch - 3 + j
+                        ))
+                    break
 
             # --- here do round two...
             # for round_no, feature in round_two_datasets.keys():
@@ -350,7 +362,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='multi', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -389,6 +401,8 @@ if __name__ == '__main__':
     parser.add_argument('--iteration', default=0, type=str)
     parser.add_argument('--mode', default='train', type=str)
     parser.add_argument('--log-interval', default=100, type=int)
+    parser.add_argument('--patience', '--early-stopping-patience', default=5, type=float,
+                        metavar='Patience', help='Early Stopping Dropout Patience')
 
     args = parser.parse_args()
     state = {k: v for k, v in args._get_kwargs()}
@@ -405,13 +419,8 @@ if __name__ == '__main__':
         torch.cuda.manual_seed_all(args.manualSeed)
 
     if 'bw' in args.dataset:
-        combinations = itertools.combinations(['shape', 'scale', 'orientation', 'x_position'],
-                                              3)
         experiments = {
             "shape_scale_orientation": ('shape', 'scale', 'orientation'),
-            "scale_orientation": ('scale', 'orientation'),
-            "shape_scale": ('shape', 'scale'),
-            "shape_orientation": ('shape', 'orientation'),
         }
         dsc = BWDSpritesCreator(
             data_path="./data/",
@@ -419,12 +428,9 @@ if __name__ == '__main__':
         )
     elif 'multicolor' in args.dataset:
         # experiments
-        combinations = itertools.combinations(['shape', 'scale', 'orientation', 'object_number', 'color', 'x_position'],
-                                              5)
-        experiments = {}
-        for comb in combinations:
-            key = "_".join([str_elem.replace('_', '-') for str_elem in comb])
-            experiments[key] = comb
+        experiments = {
+            "shape_scale_orientation_color": ('shape', 'scale', 'orientation', 'color', 'object_number'),
+        }
         dsc = MultiColorDSpritesCreator(
             data_path='./data/',
             filename="multi_color_dsprites.h5"
@@ -433,9 +439,8 @@ if __name__ == '__main__':
         # experiments
         experiments = {
             "shape_scale_orientation_color": ('shape', 'scale', 'orientation', 'color'),
-            "shape_scale_color": ('shape', 'scale', 'color'),
-            "shape_orientation_color": ('scale', 'orientation', 'color'),
-            "scale_color": ('scale', 'color'),
+            "shape_scale_orientation": ('shape', 'scale', 'orientation'),
+            "shape_orientation": ('shape', 'orientation'),
         }
         dsc = ColorDSpritesCreator(
             data_path='./data/',
@@ -445,21 +450,16 @@ if __name__ == '__main__':
         # experiments
         experiments = {
             "shape_scale_orientation_object-number": ('shape', 'scale', 'orientation', 'object_number'),
-            "shape_scale_object-number": ('shape', 'scale', 'object_number'),
-            "shape_orientation_object-number": ('scale', 'orientation', 'object_number'),
-            "scale_object-number": ('scale', 'object_number'),
         }
         dsc = MultiDSpritesCreator(
             data_path='./data/',
             filename="multi_bwdsprites.h5"
         )
     elif 'face' in args.dataset:
-        combinations = itertools.combinations(['age', 'gender', 'ethnicity'], 2)
-        experiments = {}
-        for comb in combinations:
-            key = "_".join([str_elem.replace('_', '-') for str_elem in comb])
-            experiments[key] = comb
-        experiments['age_gender_ethnicity'] = ('age', 'gender', 'ethnicity')
+        experiments = {
+            "shape_scale_orientation_object-number": ('gender', 'ethnicity'),
+            "age_gender_ethnicity": ('age', 'gender', 'ethnicity')
+        }
         dsc = UTKFaceCreator(
             data_path='./data/',
             filename='UTKFace.h5'
@@ -471,13 +471,13 @@ if __name__ == '__main__':
         run_experiment(args,
                        experiments=experiments,
                        dsc=dsc,
-                       samples=10,
+                       samples=100,
                        scope=locals())
         print("done")
 
     except Exception as e:
-          print("Error: {}".format(e))
-          raise e
+        print("Error: {}".format(e))
+        raise e
 
     finally:
         print("saving zip...")

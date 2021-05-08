@@ -1,8 +1,9 @@
 import shutil
 import numpy as np
+import os
+import platform
 from pathlib import Path
 from os import path as pt
-import os
 
 
 def file_exist_query(filename):
@@ -24,6 +25,12 @@ def file_exists(filename):
         return True
     return False
 
+def remove_file(filename):
+    try:
+        os.remove(filename)
+        return True
+    except:
+        return False
 
 def folder_exists(folder_name):
     return pt.isdir(folder_name)
@@ -58,3 +65,12 @@ def get_filenames(folder="./", file_ending='', file_beginning='', contains=''):
                          and contains in file]))
 
 
+def creation_date(path_to_file):
+    if platform.system() == 'Windows':
+        return os.path.getctime(path_to_file)
+    else:
+        stat = os.stat(path_to_file)
+        try:
+            return stat.st_birthtime
+        except AttributeError:
+            return stat.st_mtime

@@ -98,12 +98,12 @@ for i in range(len(df_data)):
     new_dataset['imgs'][i, :, :, :] = np.array(img)
 
     new_dataset['latents_values'][i, 0] = identity_map[df_data['identity'][i]] + 1
-    new_dataset['latents_values'][i, 1] = df_data['age'][i]/10 + 1
+    new_dataset['latents_values'][i, 1] = df_data['age'][i]//10 + 1
     new_dataset['latents_values'][i, 2] = df_data['gender'][i] + 1
     new_dataset['latents_values'][i, 3] = df_data['ethnicity'][i] + 1
 
     new_dataset['latents_classes'][i, 0] = identity_map[df_data['identity'][i]]
-    new_dataset['latents_classes'][i, 1] = df_data['age'][i]/10
+    new_dataset['latents_classes'][i, 1] = df_data['age'][i]//10
     new_dataset['latents_classes'][i, 2] = df_data['gender'][i]
     new_dataset['latents_classes'][i, 3] = df_data['ethnicity'][i]
     if i % 100 == 0:
