@@ -14,8 +14,11 @@ NSML COMMANDS
 - nsml run -d UTKFace2 --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 
-# --- solution state save
-- nsml run -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+# --- solution state preturbation save (multiple experiments with different sets of feature cues)
+- nsml run -e main_perturbation.py -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+
+# --- solution state augmentaion save (multiple experiments with same set of feature cues but augmentations by different cues each time)
+- nsml run -e main_augmentation.py -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 
 

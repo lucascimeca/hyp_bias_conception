@@ -72,7 +72,7 @@ class FeatureDataset(Dataset):
         self.resize = resize
 
         # labels
-        self.labels = np.ones((self.classes.shape[0]))-1
+        self.labels = np.zeros((self.classes.shape[0]))-1
         for lv in range(self.no_of_feature_lvs):
             same_cell_condition = self.classes[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]
             self.labels[same_cell_condition] = lv
@@ -102,6 +102,12 @@ class FeatureDataset(Dataset):
 
     def get_original_index(self, idx):
         return self.indeces[idx]
+
+    def add_indeces(self, indeces):
+        self.indeces = sorted(self.indeces + indeces)
+
+    def get_indeces(self):
+        return self.indeces
 
 
 class FeatureCombinationCreator:

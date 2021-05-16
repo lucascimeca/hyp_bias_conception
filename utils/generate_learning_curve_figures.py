@@ -7,15 +7,15 @@ TENSORBOARD_FOLDER = "./../runs/"
 # ['#e52592', '#425066', '#12b5cb', '#f9ab00', '#9334e6', '#7cb342', '#e8710a']
 feature_to_color_dict = {
     "diagonal": '#e52592',
-    "scale": '#425066',
-    "color": '#12b5cb',
-    "shape": '#9334e6',
-    "orientation": '#e8710a',
-    "object_number": '#7cb342',
-    "x_position": '#62733c',
-    "age": '#ad63a8',
-    "gender": '#ff0004',
-    "ethnicity": '#7a7a7a'
+    "scale": '#425066',  "scale_augmentation": '#425066',
+    "color": '#12b5cb',  "color_augmentation": '#12b5cb',
+    "shape": '#9334e6',  "shape_augmentation": '#9334e6',
+    "orientation": '#e8710a',  "orientation_augmentation": '#e8710a',
+    "object_number": '#7cb342',  "object_number_augmentation": '#7cb342',
+    "x_position": '#62733c',  "x_position_augmentation": '#62733c',
+    "age": '#ad63a8',  "age_augmentation": '#ad63a8',
+    "gender": '#ff0004',  "gender_augmentation": '#ff0004',
+    "ethnicity": '#7a7a7a',  "ethnicity_augmentation": '#7a7a7a',
 }
 
 
@@ -29,7 +29,10 @@ def plot_shades(data,  data_label, title='Loss', x_label='Epoch', y_label='Loss'
         # extract task name
         k_labels = key.split('/')[0].split('_task_')
         if len(k_labels) == 1:
-            task_name = "diagonal"
+            if len(k_labels) != 0 and 'augmentation' in k_labels[0]:
+                task_name = k_labels[0]
+            else:
+                task_name = "diagonal"
         else:
             task_name = k_labels[1]
 

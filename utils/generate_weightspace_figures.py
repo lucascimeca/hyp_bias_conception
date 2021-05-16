@@ -100,7 +100,7 @@ def compute_distance(arr1, arr2):
     return torch.sqrt(torch.dot(diff, diff)).cpu()
 
 
-def graph_distance_figure(all_data, labels, colors=None):
+def distance_matrix_figure(all_data, labels):
     indeces = list(range(all_data.shape[0]))
 
     filename = "weight_distances"
@@ -127,7 +127,6 @@ def graph_distance_figure(all_data, labels, colors=None):
         distance_matrix = np.load(RESULTS_FOLDER + filename + extension)
         distance_matrix = distance_matrix['distance_matrix']
 
-
     # --- Distance matrix plot -----
 
     plt.figure(0, (10, 10))
@@ -143,19 +142,6 @@ def graph_distance_figure(all_data, labels, colors=None):
     ax.set_yticks(x_ticks)
     ax.set_yticklabels(label_list)
     plt.show()
-
-
-    # G = nx.from_numpy_matrix(distance_matrix)
-    # G_tmp = nx.drawing.nx_agraph.to_agraph(G)
-    # G_tmp.draw(RESULTS_FOLDER + 'out.png', format='png', prog='neato')
-
-    # plt.figure(0, (20, 20))
-    # pos = nx.circular_layout(G)
-    # nx.draw(G,pos, node_size=2, alpha=0.1, node_color='black')
-
-    # plt.tight_layout()
-    # plt.axis('equal')
-    # plt.show()
 
     return True
 
@@ -227,7 +213,5 @@ if __name__ == "__main__":
                                       colors=colors)
 
     # FIG 3
-    graph_distance_figure(all_data=all_data,
-                          labels=all_labels,
-                          colors=colors
-                          )
+    distance_matrix_figure(all_data=all_data,
+                           labels=all_labels)
