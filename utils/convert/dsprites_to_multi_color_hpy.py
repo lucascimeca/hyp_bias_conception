@@ -1,19 +1,13 @@
-import numpy as np
-from numpy import savez_compressed
 import h5py
-import time
-import matplotlib
 
-import matplotlib.pyplot as plt
 # matplotlib.use('TkAgg')
 
-from itertools import islice
-from utils.simple_io import *
+from utils.misc.simple_io import *
 
 MAX_OBJ_NO = 4
 
 # Load dataset in BW
-data_path = "./../data/"
+data_path = "../../data/"
 out_filename='multi_color_dsprites.h5'
 
 bw_filename='bw_dsprites.hdf5'

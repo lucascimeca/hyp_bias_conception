@@ -21,18 +21,18 @@ import matplotlib
 
 ########### Color DSprites #################
 
-# dsc = ColorDSpritesCreator(data_path='./../data/')
-# dsc.get_dataset_fvar(
-#     number_of_samples=10000,
-#     features_variants=('color', 'shape'),
-#     color=(0, 4),
-#     shape=(0, 3),
-#     scale=(0.5, 1),
-#     orientation=(0, 2 * np.pi),
-#     x_position=(0, 1),
-#     y_position=(0, 1),
-# )
-# dsc.show_tasks()
+dsc = ColorDSpritesCreator(data_path='./../data/')
+dsc.get_dataset_fvar(
+    number_of_samples=10000,
+    features_variants=('color', 'shape', 'scale', 'orientation'),
+    color=(0, 4),
+    shape=(0, 3),
+    scale=(0.5, 1),
+    orientation=(0, 2 * np.pi),
+    x_position=(0, 1),
+    y_position=(0, 1),
+)
+dsc.show_tasks()
 
 ########## Multi DSprites (still black and white but multiple elements) #################
 # dsc = MultiDSpritesCreator(data_path='./../data/', filename='multi_bwdsprites.h5')
@@ -67,10 +67,10 @@ import matplotlib
 
 ########## UTK Face dataset #################
 # Data
-dsc = UTKFaceCreator(data_path='./../data/', filename='UTKFace.h5')
-dsc.get_dataset_fvar(
-    number_of_samples=10000,
-    features_variants=('ethnicity', 'age'),
-    resize=(64, 64)
-)
-dsc.show_tasks()
+# dsc = UTKFaceCreator(data_path='./../data/', filename='UTKFace.h5')
+# dsc.get_dataset_fvar(
+#     number_of_samples=10000,
+#     features_variants=('ethnicity', 'age'),
+#     resize=(64, 64)
+# )
+# dsc.show_tasks()

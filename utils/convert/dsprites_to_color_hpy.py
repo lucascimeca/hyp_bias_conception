@@ -1,14 +1,9 @@
-import numpy as np
-from numpy import savez_compressed
 import h5py
 
-
-
-from itertools import islice
-from utils.simple_io import *
+from utils.misc.simple_io import *
 
 # Load dataset in BW
-data_path = "./../data/"
+data_path = "../../data/"
 filename = 'dsprites.npz'
 dataset_name = data_path + filename
 

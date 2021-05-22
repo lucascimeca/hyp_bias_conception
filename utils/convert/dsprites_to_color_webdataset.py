@@ -1,14 +1,11 @@
 import webdataset as wds
-import numpy as np
 import tarfile
 from PIL import Image
 
-
-from itertools import islice
-from utils.simple_io import *
+from utils.misc.simple_io import *
 
 # Load dataset in BW
-data_path = "./../data/"
+data_path = "../../data/"
 filename = 'dsprites.npz'
 dataset_name = data_path + filename
 

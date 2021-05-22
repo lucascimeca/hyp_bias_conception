@@ -4,7 +4,6 @@ import argparse
 import random
 import time
 
-import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.parallel
@@ -13,20 +12,15 @@ import torch.utils.data as data
 import torch.distributed as dist
 import webbrowser
 import zipfile
-import os
 import sys
 import traceback
-import itertools
 
 import nsml
 import copy
-import numpy as np
 import models as models
 from models.convnet import ConvNet
 from models.resnet import ResNet
-from models.wrn import WideResNet
 from models.ffnet import FFNet
-from models.vit import DistilledVisionTransformer
 from timm.models.vision_transformer import VisionTransformer
 from nsml import GPU_NUM
 from nsml import PARALLEL_WORLD, PARALLEL_PORTS, MY_RANK
@@ -34,7 +28,7 @@ from utils import AverageMeter, accuracy
 from utils.data_loader import *
 from torch.utils.tensorboard import SummaryWriter
 from tensorboard import program
-from utils.simple_io import *
+from utils.misc.simple_io import *
 from functools import partial
 
 NSML = True
@@ -153,7 +147,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             test_data = copy.deepcopy(round_two_datasets[augmentation]['valid'])  # off diag
             test_data.add_indeces(round_one_dataset['valid'].get_indeces())       # main diag
 
-
             # (re)initialize Model
             print("==> creating model '{}'".format(args.arch))
             if 'color' in args.dataset or 'face' in args.dataset:
@@ -244,9 +237,11 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             start_time = time.time()
             patience_cnt = 0
             weight_states_to_save = []
+            zero_loss = False
+            patience_cnt = 0
             for epoch in range(args.epochs):
 
-                adjust_learning_rate(optimizer, epoch, args)
+                # adjust_learning_rate(optimizer, epoch, args)
                 print('\nEpoch: [%d | %d]' % (epoch + 1, args.epochs))
                 losses = AverageMeter()
                 accuracies = AverageMeter()
@@ -303,6 +298,9 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                         # if it is the best, save
                         update = True
 
+                        if test_loss == 0:
+                            zero_loss = True
+
                     print("{} {}, BEST {}".format(task, test_acc, best_accuracies[task]))
 
                     task_writers[task].add_scalar('round_one/test', test_acc, epoch)
@@ -321,9 +319,12 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     patience_cnt = 0
                     nsml.save(global_step)
                     weight_states_to_save += [copy.deepcopy(model.state_dict())]
-                    if len(weight_states_to_save) >= 3:
+                    if len(weight_states_to_save) >= args.ESWTS:
                         weight_states_to_save = weight_states_to_save[-3:]
                 else:
+                    patience_cnt += 1
+
+                if zero_loss:
                     patience_cnt += 1
 
                 if patience_cnt >= args.patience or epoch == args.epochs-1:
@@ -332,8 +333,9 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                             logs_folder,
                             exp_key,
                             sample_no,
-                            epoch - 3 + j
+                            epoch - args.ESWTS + j
                         ))
+                if zero_loss:
                     break
 
             sample_no += 1
@@ -341,8 +343,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             # --- here do round two...
             # for round_no, feature in round_two_datasets.keys():
             #     pass
-
-
 
 
 if __name__ == '__main__':
@@ -357,7 +357,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
-    parser.add_argument('--epochs', default=25, type=int, metavar='N',
+    parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -394,8 +394,10 @@ if __name__ == '__main__':
     parser.add_argument('--iteration', default=0, type=str)
     parser.add_argument('--mode', default='train', type=str)
     parser.add_argument('--log-interval', default=100, type=int)
-    parser.add_argument('--patience', '--early-stopping-patience', default=5, type=float,
+    parser.add_argument('--patience', '--early-stopping-patience', default=10, type=float,
                         metavar='Patience', help='Early Stopping Dropout Patience')
+    parser.add_argument('--ESWTS', '--early-stopping-weights-to-save', default=10, type=float,
+                        metavar='ESWTS', help='Early Stopping Weights to Save')
 
     args = parser.parse_args()
     state = {k: v for k, v in args._get_kwargs()}
@@ -467,7 +469,7 @@ if __name__ == '__main__':
         run_experiment(args,
                        experiments=experiments,
                        dsc=dsc,
-                       samples=100,
+                       samples=1,
                        scope=locals())
         print("done")
 

@@ -1,11 +1,7 @@
 import re
-import os
 import pandas as pd
-import numpy as np
-import itertools
-import copy
 import torch
-from utils.simple_io import *
+from utils.misc.simple_io import *
 from tensorflow.python.summary.summary_iterator import summary_iterator
 
 
@@ -101,20 +97,20 @@ def convert_tb_data(root_dir, apply_row_limits=True):
                         else:
                             if numpy_dict[run_name][exp_key].shape[1] < data[value_name].shape[0]:
                                 # create a zero array to fill the gap of unseen test data
-                                zero_fill = np.zeros((numpy_dict[run_name][exp_key].shape[0],
+                                fill = np.ones((numpy_dict[run_name][exp_key].shape[0],
                                                      data[value_name].shape[0] - numpy_dict[run_name][exp_key].shape[1],
-                                                     numpy_dict[run_name][exp_key].shape[2]))
+                                                     numpy_dict[run_name][exp_key].shape[2])) * -1
                                 numpy_dict[run_name][exp_key] = np.concatenate(
-                                    (numpy_dict[run_name][exp_key], zero_fill), axis=1
+                                    (numpy_dict[run_name][exp_key], fill), axis=1
                                 )
 
                             elif numpy_dict[run_name][exp_key].shape[1] > data[value_name].shape[0]:
                                 # create a zero array to fill the gap of unseen test data
-                                zero_fill = np.zeros((numpy_dict[run_name][exp_key].shape[1] - data[value_name].shape[0],
-                                                     data[value_name].shape[1]))
+                                fill = np.ones((numpy_dict[run_name][exp_key].shape[1] - data[value_name].shape[0],
+                                                     data[value_name].shape[1])) * -1
 
                                 data[value_name] = np.concatenate(
-                                    (data[value_name], zero_fill), axis=0
+                                    (data[value_name], fill), axis=0
                                 )
 
                             numpy_dict[run_name][exp_key] = np.concatenate(
@@ -139,7 +135,6 @@ def load_weight_data(root_dir):
         if len(filenames) > 0:
             filename_groups += [filenames]
 
-
     data_dict = {}
     label_overfit_dictionary = {}
     for filenames in filename_groups:
@@ -162,12 +157,17 @@ def load_weight_data(root_dir):
 
             # get validation curves
             test_acc_keys = [key for key in acc_data[run_name].keys() if 'test' in key and 'round_two' in key]
+            if len(test_acc_keys) == 0:
+                test_acc_keys = [key for key in acc_data[run_name].keys() if 'test' in key]
             epoch_accs = []
             epoch_labels = []
             for key in test_acc_keys:
                 epoch_accs += [acc_data[run_name][key][sample_no_idx, int(epoch), -1]]
                 labels = key.split('/')
-                epoch_labels += [labels[0].split('_')[-1]]
+                if "augmentation" in run_name:
+                    epoch_labels += [run_name]
+                else:
+                    epoch_labels += [labels[0].split('_')[-1]]
 
             file_full_path = os.path.join(root, filename)
             data_dict[run_name][sample_no] += [file_full_path]

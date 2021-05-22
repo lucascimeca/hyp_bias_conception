@@ -1,6 +1,5 @@
 from torch.utils.tensorboard import SummaryWriter
 from tensorboard import program
-from utils.simple_io import *
 import webbrowser
 import time
 

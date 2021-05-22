@@ -19,7 +19,7 @@ feature_to_color_dict = {
 }
 
 
-def plot_shades(data,  data_label, title='Loss', x_label='Epoch', y_label='Loss', smoothing_parameter=0.6, cap=20,
+def plot_shades(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_parameter=0.6, cap=20,
                 type='acc', smoothing=True, ylim=None):
     fig = plt.figure(figsize=(7, 4))
     ax = fig.add_subplot(111)
@@ -85,12 +85,58 @@ def plot_shades(data,  data_label, title='Loss', x_label='Epoch', y_label='Loss'
     plt.show()
 
 
-if __name__ == "__main__":
-    PLOT_TRAIN_LOSS = False
-    PLOT_TRAIN_ACC = False
-    PLOT_VALID_ACC = True
+def plot_all(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_parameter=0.6,
+                type='acc', smoothing=True, ylim=None):
+    fig = plt.figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    for i, key in enumerate(data.keys()):
+        # extract task name
+        k_labels = key.split('/')[0].split('_task_')
+        if len(k_labels) == 1:
+            if len(k_labels) != 0 and 'augmentation' in k_labels[0]:
+                task_name = k_labels[0]
+            else:
+                task_name = "diagonal"
+        else:
+            task_name = k_labels[1]
+        # extract data
+        ys = data[key][:, :, -1]  # value
+        xs = data[key][:, :, 1]  # step
+        # smooth curves
+        if smoothing:
+            for idx in range(1, ys.shape[1]):
+                ys[:, idx] = ys[:, idx - 1] * smoothing_parameter + (1 - smoothing_parameter) * ys[:, idx]
+        # prepare +- std ranges for figure
+        for j in range(ys.shape[0]):
+            if j == 0:
+                label = "{} avg. {} $\\pm \\sigma$".format(task_name, type)
+            else:
+                label = None
+            ax.plot(xs[j, ys[j, :] >= 0],
+                    ys[j, ys[j, :] >= 0],
+                    label=label,
+                    color=feature_to_color_dict[task_name])
+    # plt.autoscale(enable=True, axis='y')
+    # if ylim is None:
+    #     axes = plt.gca()
+    #     y_min, y_max = axes.get_ylim()
+    #     plt.ylim([y_min, y_max+5])
+    # else:
+    #     plt.ylim(ylim)
+    ax.set_title(title)
+    ax.legend()
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.grid()
+    plt.show()
 
-    data_dict = convert_tb_data(f"{TENSORBOARD_FOLDER}")
+
+if __name__ == "__main__":
+    PLOT_TRAIN_LOSS = True
+    PLOT_TRAIN_ACC = False
+    PLOT_VALID_ACC = False
+
+    data_dict = convert_tb_data(f"{TENSORBOARD_FOLDER}", apply_row_limits=False)
 
     for experiment_name in data_dict.keys():
         data = data_dict[experiment_name]
@@ -98,32 +144,40 @@ if __name__ == "__main__":
         # ------------------- PLOT FIGURES ------------------
 
         if PLOT_TRAIN_LOSS:
+
             # -------- PLOT TRAIN LOSS --------
             train_loss_keys = [key for key in data.keys() if 'train_loss' in key]
             if len(train_loss_keys) > 0:
 
                 loss_data = data[train_loss_keys[0]]
                 plot_shades(data={'loss': loss_data},
-                            data_label={'loss': 'training loss'},
                             title='{} - Train Loss'.format(experiment_name),
                             x_label='Epoch',
                             y_label='Loss',
                             type='loss')
 
+                plot_all(data={'loss': loss_data},
+                         title='{} - Train Loss'.format(experiment_name),
+                         x_label='Epoch',
+                         y_label='Loss',
+                         type='loss',
+                         smoothing=False)
+
         if PLOT_TRAIN_ACC:
+
             # -------- PLOT TRAIN ACC --------
             train_acc_keys = [key for key in data.keys() if 'train_acc' in key]
             if len(train_acc_keys) > 0:
 
                 acc_data = data[train_acc_keys[0]]
                 plot_shades(data={'acc': acc_data},
-                            data_label={'acc': 'training accuracy'},
                             title='{} - Train Accuracy'.format(experiment_name),
                             x_label='Epoch',
                             y_label='Accuracy',
                             type='acc')
 
         if PLOT_VALID_ACC:
+
             # -------- PLOT TEST ACC --------
             test_acc_keys = [key for key in data.keys() if 'test' in key]
             if len(test_acc_keys) > 0:
@@ -133,8 +187,8 @@ if __name__ == "__main__":
                     plot_data_dict[key] = data[key]
                     labels = key.split('/')
                     plot_labels_dict[key] = labels[0] + '_' + labels[-1]
+
                 plot_shades(data=plot_data_dict,
-                            data_label=plot_labels_dict,
                             title='{} - Test Accuracy'.format(experiment_name),
                             x_label='Epoch',
                             y_label='Accuracy',

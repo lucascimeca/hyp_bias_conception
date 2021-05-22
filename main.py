@@ -4,7 +4,6 @@ import argparse
 import random
 import time
 
-import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.parallel
@@ -13,19 +12,15 @@ import torch.utils.data as data
 import torch.distributed as dist
 import webbrowser
 import zipfile
-import os
 import sys
 import traceback
 import itertools
 
 import nsml
-import numpy as np
 import models as models
 from models.convnet import ConvNet
 from models.resnet import ResNet
-from models.wrn import WideResNet
 from models.ffnet import FFNet
-from models.vit import DistilledVisionTransformer
 from timm.models.vision_transformer import VisionTransformer
 from nsml import GPU_NUM
 from nsml import PARALLEL_WORLD, PARALLEL_PORTS, MY_RANK
@@ -33,7 +28,7 @@ from utils import AverageMeter, accuracy
 from utils.data_loader import *
 from torch.utils.tensorboard import SummaryWriter
 from tensorboard import program
-from utils.simple_io import *
+from utils.misc.simple_io import *
 from functools import partial
 
 NSML = True

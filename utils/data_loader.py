@@ -3,19 +3,14 @@ DSprites for combinatorial feature switches.
 Author: Luca Scimeca
 """
 import torch
-import numpy as np
-import webdataset as wds
 import matplotlib.gridspec as gridspec
 import tarfile
-from skimage import io, transform
-import time
-import random
+from skimage import transform
 import h5pickle as h5py
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import TensorDataset
 from matplotlib import pyplot as plt
-from utils.simple_io import *
-from nsml import HAS_DATASET, DATASET_PATH, GPU_NUM
-from torch.utils.data import IterableDataset
+from utils.misc.simple_io import *
+from nsml import DATASET_PATH
 from torch.utils.data import Dataset
 
 
@@ -254,7 +249,7 @@ class FeatureCombinationCreator:
     def get_dataset_fvar(self, number_of_samples='all', train_split=0.7, valid_split=0.2,
                          features_variants=('shape', 'scale'), resize=None, **latent_factors):
         """
-        The function creates two round of dsprites datasets based on two varying features.
+        The function creates two rounds of datasets based on multiple varying features.
         The first round is based on the main diagonal, when varying the two features (the number of variations is
         decided based on which feature has the lowest number of levels). The second round is based off the offdiagonal,
         this depends on which task we wish to solve, i.e. if based on feature 1 or feature 2, thus two datasets will be
@@ -265,7 +260,7 @@ class FeatureCombinationCreator:
                                         to get the full dataset
         :param train_split: (float) proportion of training data. Used for all returned datasets.
         :param valid_split: (float) proportion of validation data. Used for all returned datasets.
-        :param features_variants: tuple(str, str) name of features to use for label matrix
+        :param features_variants: tuple(str, str, ...) name of features to use for label matrix
         :param latent_factors: additional into. It allows to specify ranges to consider for each feature
                                (see _sample_latent).
         :return: (dict, dict) two dictionaries containing the datasets for round one and round two.
@@ -460,7 +455,7 @@ class FeatureCombinationCreator:
 
     def show_tasks(self):
 
-        features = list(self.task_dict.keys())[:2]
+        features = list(self.task_dict.keys())[2:4]
 
         spacing = self.no_of_feature_lvs // 10 + 1
         imgs_num = len(list(range(0, self.no_of_feature_lvs, spacing)))
@@ -488,13 +483,13 @@ class FeatureCombinationCreator:
                         # off diagonal
                         dataset = self.round_two_datasets[feature]['train']
 
-                    img_label = dataset[idx][1]
+                    img_label = dataset[idx][2]
                     count = 0
                     while count <= len(dataset) and (img_label != label or idx in used_idxs):
                         idx += 1
                         count += 1
                         try:
-                            img_label = dataset[idx][1]
+                            img_label = dataset[idx][2]
                         except:
                             idx = 0
                     if count >= len(dataset):
@@ -509,13 +504,13 @@ class FeatureCombinationCreator:
 
                         used_idxs.add(idx)
                         sub_ax.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-                        img = dataset[idx][0]
+                        img = dataset[idx][1]
                         if img.shape[0] > 1:
                             self.cmap = None
                         else:
                             self.cmap = "Greys_r"
-                        if img.dtype == torch.float:
-                            img = (img*255).to(torch.uint8)
+                        # if img.dtype == torch.float:
+                        #     img = (img*255).to(torch.uint8)
 
                         sub_ax.set_title("label: {} ($C^{}_{}={}$)".format(
                                 img_label.item(),

@@ -1,22 +1,16 @@
-from torchvision import transforms
 import matplotlib.pyplot as plt
-import numpy as np
 import h5py
-import time
-import matplotlib
 import pandas as pd
 import re
 import glob
 import PIL
 
-
-from itertools import islice
-from utils.simple_io import *
+from utils.misc.simple_io import *
 
 MAX_OBJ_NO = 4
 
 # Load dataset
-data_path = "./../data/"
+data_path = "../../data/"
 
 latents_ranges = {
     'identity': (0, 4),

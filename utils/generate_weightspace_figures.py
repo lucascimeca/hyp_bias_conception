@@ -1,26 +1,23 @@
-import torch
 import matplotlib.pyplot as plt
-import networkx as nx
-from utils.simple_io import *
 from sklearn.decomposition import PCA
 from utils.results_utils import *
 
-
 TENSORBOARD_FOLDER = "./../runs/"
 RESULTS_FOLDER = "./../results/generated/"
+NORMALIZE = False
 
 # ['#e52592', '#425066', '#12b5cb', '#f9ab00', '#9334e6', '#7cb342', '#e8710a']
 feature_to_color_dict = {
     "diagonal": '#e52592',
-    "scale": '#425066',
-    "color": '#12b5cb',
-    "shape": '#9334e6',
-    "orientation": '#e8710a',
-    "object_number": '#7cb342',
-    "x_position": '#62733c',
-    "age": '#ad63a8',
-    "gender": '#ff0004',
-    "ethnicity": '#7a7a7a'
+    "scale": '#425066',  "scale_augmentation": '#425066',
+    "color": '#12b5cb',  "color_augmentation": '#12b5cb',
+    "shape": '#9334e6',  "shape_augmentation": '#9334e6',
+    "orientation": '#e8710a',  "orientation_augmentation": '#e8710a',
+    "object_number": '#7cb342',  "object_number_augmentation": '#7cb342',
+    "x_position": '#62733c',  "x_position_augmentation": '#62733c',
+    "age": '#ad63a8',  "age_augmentation": '#ad63a8',
+    "gender": '#ff0004',  "gender_augmentation": '#ff0004',
+    "ethnicity": '#7a7a7a',  "ethnicity_augmentation": '#7a7a7a',
 }
 
 
@@ -50,7 +47,7 @@ def pca_2d_weight_distribution_figure(data_dict, overfit_container, pca_2d=None,
     plt.show()
 
 
-def cumulate_explained_variance_figure(data_dict, overfit_container, colors=None):
+def cumulate_explained_variance_figure(data_dict, overfit_container):
     # ---- cumulative explained variance ------
 
     fig = plt.figure(figsize=(7, 4))
@@ -66,8 +63,29 @@ def cumulate_explained_variance_figure(data_dict, overfit_container, colors=None
                                          range(len(pca.explained_variance_ratio_))]
         label = "overfit to '{}' at {:.2f}%".format(overfit_container[experiment_name][0][0],
                                                     overfit_container[experiment_name][0][1])
-        plt.plot(cumulative_explained_variance[:20], color=colors[i], label=label)
+        plt.plot(cumulative_explained_variance[:20], color=feature_to_color_dict[experiment_name], label=label)
 
+    ax.legend()
+    ax.set_xlabel("Dimensions (Principal Components)")
+    ax.set_ylabel("Explained Variance (%)")
+    plt.show()
+
+
+def augmented_cumulate_explained_variance_figure(data_dict):
+    # ---- cumulative explained variance ------
+
+    fig = plt.figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    ax.grid()
+    ax.set_title("Rank diversity of solutions (Explained Variance of solution weights)")
+    for i, experiment_name in enumerate(data_dict.keys()):
+        X = data_dict[experiment_name][:, 0, :].cpu().numpy()
+        pca = PCA()  # all dimensions
+        pca.fit(X)
+        cumulative_explained_variance = [sum(pca.explained_variance_ratio_[:j]) * 100 for j in
+                                         range(len(pca.explained_variance_ratio_))]
+        plt.plot(cumulative_explained_variance[:20], color=feature_to_color_dict[experiment_name],
+                 label="{}".format(experiment_name))
     ax.legend()
     ax.set_xlabel("Dimensions (Principal Components)")
     ax.set_ylabel("Explained Variance (%)")
@@ -78,7 +96,7 @@ def bar_plot_figure(overfit_container):
     # ---- cumulative explained variance ------
 
     plt.figure(figsize=(4, 7))
-    fig, axes = plt.subplots(1, 3)
+    fig, axes = plt.subplots(1, len(list(overfit_container.keys())))
     plt.title("Solutions overfit stability")
 
     for i, experiment_name in enumerate(overfit_container.keys()):
@@ -145,6 +163,50 @@ def distance_matrix_figure(all_data, labels):
 
     return True
 
+def augmented_distance_matrix_figure(all_data, labels):
+    indeces = list(range(all_data.shape[0]))
+
+    filename = "weight_distances"
+    extension = ".npz"
+
+    if not file_exists(RESULTS_FOLDER + filename + extension):
+        print("Could not find distance_matrix for weight distances, generating...")
+        distance_matrix = np.zeros((len(indeces), len(indeces)), dtype=np.float64)
+        for i in range(len(indeces)):
+            for j in range(len(indeces)):
+                if i == j:
+                    continue
+                distance_matrix[i, j] = compute_distance(all_data[i, :], all_data[j, :])
+                distance_matrix[j, i] = distance_matrix[i, j]
+                p_id = i*len(indeces) + j
+                if p_id % 100 == 0:
+                    print("Weight distances generation, progress {:.2f}%".format((i*len(indeces) + j)*100/len(indeces)**2),
+                          flush=True,
+                          end='\r')
+        np.savez_compressed(RESULTS_FOLDER + filename,
+                            distance_matrix=distance_matrix)
+    else:
+        print("Found distance_matrix for weight distances, loading...")
+        distance_matrix = np.load(RESULTS_FOLDER + filename + extension)
+        distance_matrix = distance_matrix['distance_matrix']
+
+    # --- Distance matrix plot -----
+
+    plt.figure(0, (10, 10))
+    fig, ax = plt.subplots(1, 1)
+    plt.title('Distance Matrix', fontsize=14)
+    plt.imshow(distance_matrix, cmap='hot')
+    plt.colorbar()
+    x_ticks = list(range(0, distance_matrix.shape[0], 50))
+    label_list = [labels[i] for i in x_ticks]
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(label_list)
+    plt.xticks(rotation=45)
+    ax.set_yticks(x_ticks)
+    ax.set_yticklabels(label_list)
+    plt.show()
+
+    return True
 
 if __name__ == "__main__":
 
@@ -162,13 +224,30 @@ if __name__ == "__main__":
     exp_labels = None
     sample_labels = None
 
+    # normalize data by experiment
+    normalized_weight_data = {}
+    if NORMALIZE:
+        for exp_idx, experiment_name in enumerate(weight_data.keys()):
+            mindata = weight_data[experiment_name].min(dim=0).values.min(dim=0).values
+            maxdata = weight_data[experiment_name].max(dim=0).values.max(dim=0).values
+            normalized_weight_data[experiment_name] = (weight_data[experiment_name] - mindata) / (maxdata - mindata)
+
     for exp_idx, experiment_name in enumerate(weight_data.keys()):
-        # attach solution weights validation curves
-        data_tmp = weight_data[experiment_name].view(-1, weight_data[experiment_name].shape[-1])
-        exp_tmp = torch.ones((weight_data[experiment_name].shape[:-1])).view(-1, 1) * exp_idx
-        sample_tmp = torch.tensor(list(range(weight_data[experiment_name].shape[0]))).view(-1, 1).repeat(1, 3).view(-1,
-                                                                                                                    1)
+
+        if NORMALIZE:
+            # attach solution weights validation curves
+            data_tmp = normalized_weight_data[experiment_name].view(-1, normalized_weight_data[experiment_name].shape[-1])
+            exp_tmp = torch.ones((normalized_weight_data[experiment_name].shape[:-1])).view(-1, 1) * exp_idx
+            sample_tmp = torch.tensor(list(range(normalized_weight_data[experiment_name].shape[0]))).view(-1, 1).repeat(1, 3).view(-1, 1)
+
+        else:
+            # attach solution weights validation curves
+            data_tmp = weight_data[experiment_name].view(-1, weight_data[experiment_name].shape[-1])
+            exp_tmp = torch.ones((weight_data[experiment_name].shape[:-1])).view(-1, 1) * exp_idx
+            sample_tmp = torch.tensor(list(range(weight_data[experiment_name].shape[0]))).view(-1, 1).repeat(1, 3).view(-1, 1)
+
         overfit_tmp = np.array(label_overfit_dictionary[experiment_name]).reshape(-1, 1)
+
         if all_data is None:
             all_data = data_tmp
             exp_labels = exp_tmp
@@ -199,19 +278,14 @@ if __name__ == "__main__":
     colors = ['#e52592', '#425066', '#12b5cb']
 
     # FIG 0
-    bar_plot_figure(overfit_container)
+    # bar_plot_figure(overfit_container)
 
     # FIG 1
-    cumulate_explained_variance_figure(weight_data,
-                                       overfit_container=overfit_container,
-                                       colors=colors)
+    # cumulate_explained_variance_figure(weight_data, overfit_container=overfit_container)
+    # augmented_cumulate_explained_variance_figure(weight_data)
 
     # FIG 2
-    pca_2d_weight_distribution_figure(weight_data,
-                                      overfit_container=overfit_container,
-                                      pca_2d=pca_2d,
-                                      colors=colors)
+    # pca_2d_weight_distribution_figure(weight_data, overfit_container=overfit_container, pca_2d=pca_2d, colors=colors)
 
     # FIG 3
-    distance_matrix_figure(all_data=all_data,
-                           labels=all_labels)
+    distance_matrix_figure(all_data=all_data, labels=all_labels)
