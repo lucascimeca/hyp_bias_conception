@@ -103,6 +103,7 @@ def zipfolder(foldername, target_dir):
             fn = os.path.join(base, file)
             zipobj.write(fn, fn[rootlen:])
 
+
 def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
     # A flag for distributed setup
@@ -141,11 +142,47 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             # for augmentation in experiments[exp_key]:
 
             # create data augmentations (by adding the appropriate indeces)
-            training_data = copy.deepcopy(round_two_datasets[augmentation]['train'])  # off diag
-            training_data.add_indeces(round_one_dataset['train'].get_indeces())       # main diag
 
-            test_data = copy.deepcopy(round_two_datasets[augmentation]['valid'])  # off diag
-            test_data.add_indeces(round_one_dataset['valid'].get_indeces())       # main diag
+            if 'augmentation' in exp_key:
+
+                training_data = copy.deepcopy(round_two_datasets[augmentation]['train'])  # off diag
+                training_data.add_indeces(round_one_dataset['train'].get_indeces())  # main diag
+
+                test_data = copy.deepcopy(round_two_datasets[augmentation]['valid'])  # off diag
+                test_data.add_indeces(round_one_dataset['valid'].get_indeces())  # main diag
+
+                # create train dataset for main diagonal -- round one
+                trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
+                                              shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+
+                # create train all validation datasets
+                testloaders = {
+                    "round_one": data.DataLoader(round_one_dataset['valid'], batch_size=args.test_batch,
+                                                 shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker),
+                    "{}_augmentation".format(augmentation): data.DataLoader(test_data,
+                                                                            batch_size=args.test_batch,
+                                                                            shuffle=True,
+                                                                            num_workers=args.workers,
+                                                                            worker_init_fn=seed_worker)
+                }
+
+            else:
+
+                # create train dataset for main diagonal -- round one
+                trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
+                                              shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+
+                # create train all validation datasets
+                testloaders = {
+                    "round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
+                                                                         batch_size=args.test_batch,
+                                                                         shuffle=True,
+                                                                         num_workers=args.workers,
+                                                                         worker_init_fn=seed_worker)
+                    for feature in round_two_datasets.keys()}
+                testloaders['round_one'] = data.DataLoader(round_one_dataset['valid'], batch_size=args.test_batch,
+                                                           shuffle=True, num_workers=args.workers,
+                                                           worker_init_fn=seed_worker)
 
             # (re)initialize Model
             print("==> creating model '{}'".format(args.arch))
@@ -188,19 +225,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 nsml.paused(scope=locals())
 
             # create train dataset for main diagonal -- round one
-            trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-            # create train all validation datasets
-            testloaders = {
-                "round_one": data.DataLoader(round_one_dataset['valid'], batch_size=args.test_batch,
-                                             shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker),
-                "{}_augmentation".format(augmentation): data.DataLoader(test_data,
-                                                                        batch_size=args.test_batch,
-                                                                        shuffle=True,
-                                                                        num_workers=args.workers,
-                                                                        worker_init_fn=seed_worker)
-            }
 
             # ---- LOGS folder ----
             exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
@@ -234,6 +258,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             # Train and val round one
             best_accuracies = {}  # best test accuracy
+            best_loss = None
             start_time = time.time()
             patience_cnt = 0
             weight_states_to_save = []
@@ -282,6 +307,9 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
                 print("TESTING ACCURACY")
                 update = False
+                if best_loss is None or best_loss > losses.avg:
+                    best_loss = copy.copy(losses.avg)
+                    update = True
 
                 test_reports_loss = {}
                 test_reports_acc = {}
@@ -294,9 +322,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     test_reports_acc['test__acc_'+task] = test_acc
                     if task not in best_accuracies.keys() or test_acc > best_accuracies[task]:
                         best_accuracies[task] = test_acc
-
-                        # if it is the best, save
-                        update = True
 
                         if test_loss == 0:
                             zero_loss = True
@@ -324,9 +349,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 else:
                     patience_cnt += 1
 
-                if zero_loss:
-                    patience_cnt += 1
-
                 if patience_cnt >= args.patience or epoch == args.epochs-1:
                     for j, weights in enumerate(weight_states_to_save):
                         torch.save(weights, '{}weights-{}-{}-{}.pth'.format(
@@ -335,7 +357,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                             sample_no,
                             epoch - args.ESWTS + j
                         ))
-                if zero_loss:
                     break
 
             sample_no += 1
@@ -355,7 +376,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -375,7 +396,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -437,7 +458,7 @@ if __name__ == '__main__':
             "scale_augmentation": ('shape', 'scale', 'orientation', 'color'),
             "orientation_augmentation": ('shape', 'scale', 'orientation', 'color'),
             "color_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            # "shape_scale_orientation": ('shape', 'scale', 'orientation'),
+            "diagonal": ('shape', 'scale', 'orientation', 'color'),
             # "shape_orientation": ('shape', 'orientation'),
         }
         dsc = ColorDSpritesCreator(
@@ -455,8 +476,10 @@ if __name__ == '__main__':
         )
     elif 'face' in args.dataset:
         experiments = {
-            "shape_scale_orientation_object-number": ('gender', 'ethnicity'),
-            "age_gender_ethnicity": ('age', 'gender', 'ethnicity')
+            "age_augmentation": ('age', 'gender', 'ethnicity'),
+            "gender_augmentation": ('age', 'gender', 'ethnicity'),
+            "ethnicity_augmentation": ('age', 'gender', 'ethnicity'),
+            "diagonal": ('age', 'gender', 'ethnicity')
         }
         dsc = UTKFaceCreator(
             data_path='./data/',
@@ -469,7 +492,7 @@ if __name__ == '__main__':
         run_experiment(args,
                        experiments=experiments,
                        dsc=dsc,
-                       samples=1,
+                       samples=4,
                        scope=locals())
         print("done")
 

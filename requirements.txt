@@ -10,3 +10,5 @@ scikit-image
 timm
 pyyaml
 mpi4py
+scikit-learn
+seaborn

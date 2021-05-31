@@ -134,3 +134,5 @@ runs/
 results/
 Downloads/
 .idea/
+models/pretrained/direction_files/
+*.pth

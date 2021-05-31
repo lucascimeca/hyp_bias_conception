@@ -4,4 +4,6 @@ __pycache__/
 data/
 runs/
 results/
+Downloads/
+models/pretrained/direction_files/
 *.zip

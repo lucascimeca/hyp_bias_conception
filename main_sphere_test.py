@@ -63,7 +63,7 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
-def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
+def run_experiment(args, experiments=None, dsc=None, scope=None):
 
     # A flag for distributed setup
     WORLD_SIZE = len(PARALLEL_WORLD)
@@ -73,11 +73,17 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         dist.init_process_group(backend='gloo', init_method=master_addr, rank=MY_RANK, world_size=WORLD_SIZE)
         args.train_batch //= WORLD_SIZE
 
+    if not folder_exists(DIRECTION_FILES_FOLDER):
+        folder_create(DIRECTION_FILES_FOLDER)
+
     #--------------------------------------------------------------------------
     # Check plotting resolution
     #--------------------------------------------------------------------------
-
     files = get_filenames(DIRECTION_PRETRAINED_FOLDER, file_ending='pth')
+
+    tot_exp_no = len(files) * args.r_levels * args.samples_no
+    cnt = 0
+
     for sample_file in files:
         global best_acc, global_step
 
@@ -115,8 +121,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 num_classes=num_classes,
                 depth=args.depth,
                 no_of_channels=no_of_channels)
-            args.xmin, args.xmax, args.xnum = -1., 1., 51
-            args.ymin, args.ymax, args.ynum = -1., 1., 51
         elif 'convnet' in args.arch:
             model = ConvNet(
                 num_classes=num_classes,
@@ -130,47 +134,14 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
                 norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes,
                 in_chans=no_of_channels)
-            args.xmin, args.xmax, args.xnum = -5., 5., 51
-            args.ymin, args.ymax, args.ynum = -5., 5., 51
         else:
             raise NotImplementedError()
 
         state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
         state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
-        model.load_state_dict(state_dict_rex)
-
-        w = net_plotter.get_weights(model)  # initial parameters
-        s = copy.deepcopy(model.state_dict())  # deepcopy since state_dict are references
+        model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
 
         model = nn.DataParallel(model).to(DEVICE)
-
-        # --------------------------------------------------------------------------
-        # Setup the direction file and the surface file
-        # --------------------------------------------------------------------------
-        if not folder_exists(DIRECTION_FILES_FOLDER):
-            folder_create(DIRECTION_FILES_FOLDER)
-        dir_file = DIRECTION_FILES_FOLDER + "/direction_{}_{}".format(exp_key, sample_no) # name the direction file
-
-        if rank == 0:
-            net_plotter.setup_direction2(dir_file, model)
-
-        args.raw_data = True
-        surf_file = net_plotter.name_surface_file2(args, dir_file)
-
-        if rank == 0:
-            net_plotter.setup_surface_file(args, surf_file, dir_file)
-
-        # wait until master has setup the direction file and surface file
-        mpi.barrier(comm)
-
-        # load directions
-        d = net_plotter.load_directions(dir_file)
-
-        # calculate the consine similarity of the two directions
-        if len(d) == 2 and rank == 0:
-            similarity = proj.cal_angle(proj.nplist_to_tensor(d[0]), proj.nplist_to_tensor(d[1]))
-            print('cosine similarity between x-axis and y-axis: %f' % similarity)
-
 
         cudnn.benchmark = True
         print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
@@ -197,7 +168,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
                                           shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
 
-
             # create train all validation datasets
             testloaders = {"round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
                                                                                 batch_size=args.test_batch,
@@ -206,90 +176,62 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                                                                                 worker_init_fn=seed_worker)
                            for feature in round_two_datasets.keys()}
 
-        # ---- LOGS folder ----
-        exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
-        folder_create(exp_folder, exist_ok=True)
-        logs_folder = exp_folder
-
-        """
-            Calculate the loss values and accuracies of modified models in parallel
-            using MPI reduce.
-        """
-
-        f = h5py.File(surf_file, 'r+' if rank == 0 else 'r')
-        losses, accuracies = [], []
-        xcoordinates = f['xcoordinates'][:]
-        ycoordinates = f['ycoordinates'][:] if 'ycoordinates' in f.keys() else None
-
-        if 'train_loss' not in f.keys():
-            shape = xcoordinates.shape if ycoordinates is None else (len(xcoordinates), len(ycoordinates))
-            losses = -np.ones(shape=shape)
-            accuracies = -np.ones(shape=shape)
-            if rank == 0:
-                f['train_loss'] = losses
-                f['train_acc'] = accuracies
-        else:
-            losses = f['train_loss'][:]
-            accuracies = f['train_acc'][:]
-
-        # Generate a list of indices of 'losses' that need to be filled in.
-        # The coordinates of each unfilled index (with respect to the direction vectors
-        # stored in 'd') are stored in 'coords'.
-        inds, coords, inds_nums = scheduler.get_job_indices(losses, xcoordinates, ycoordinates, comm)
-
-        print('Computing %d values for rank %d' % (len(inds), rank))
-        start_time = time.time()
-        total_sync = 0.0
-
-        # optimizer = optim.Adam(model.parameters())
         criterion = nn.CrossEntropyLoss()
 
-        # Loop over all uncalculated loss values
-        for count, ind in enumerate(inds):
-            # Get the coordinates of the loss value being calculated
-            coord = coords[count]
+        base_loss, base_acc = test(trainloader, model, criterion, save=False)
 
-            # Load the weights corresponding to those coordinates into the net
-            net_plotter.set_weights(model.module if torch.cuda.device_count() > 1 else model, w, d, coord)
+        print('\n\n {} -----  BASE LOSS={:.3f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
+        spherical_losses = []
+        spherical_accs = []
+        local_rs = []
 
-            # Record the time to compute the loss value
-            loss_start = time.time()
+        weights = copy.deepcopy(net_plotter.get_weights(model))  # initial parameters
 
-            loss, acc = test(trainloader, model, criterion, save=False)
+        step = args.max_r/args.r_levels
+        for r in torch.arange(step, args.max_r+step, step):
 
-            loss_compute_time = time.time() - loss_start
+            changes = []
+            for p in model.parameters():
+                random_params = torch.randn((args.samples_no,) + p.shape)
+                changes.append(random_params)
 
-            # Record the result in the local array
-            losses.ravel()[ind] = loss
-            accuracies.ravel()[ind] = acc
+            random_params = torch.cat([change.view(change.shape[0], -1) for change in changes], dim=1)
+            norm = torch.norm(random_params, dim=0)
+            random_params /= norm
+            random_params *= r
 
-            # Send updated plot data to the master node
-            syc_start = time.time()
-            losses = mpi.reduce_max(comm, losses)
-            accuracies = mpi.reduce_max(comm, accuracies)
-            syc_time = time.time() - syc_start
-            total_sync += syc_time
+            losses = []
+            accs = []
+            for si in range(args.samples_no):
+                start_time = time.time()
 
-            # Only the master node writes to the file - this avoids write conflicts
-            if rank == 0:
-                f['train_loss'][:] = losses
-                f['train_acc'][:] = accuracies
-                f.flush()
+                w_idx = 0
+                for (p, w) in zip(model.parameters(), weights):
+                    n_of_weights = torch.prod(torch.tensor(p.shape))
+                    p.data = w + random_params[si, w_idx:w_idx+n_of_weights].view(p.shape)
+                    w_idx = n_of_weights
 
-            print('Evaluating rank %d  %d/%d  (%.1f%%)  coord=%s \t%s= %.3f \t%s=%.2f \ttime=%.2f \tsync=%.2f' % (
-                rank, count, len(inds), 100.0 * count / len(inds), str(coord), 'train_loss', loss,
-                'train_acc', acc, loss_compute_time, syc_time))
+                loss, acc = test(trainloader, model, criterion, save=False)
+                losses.append(loss-base_loss)
+                accs.append(acc)
 
-        # This is only needed to make MPI run smoothly. If this process has less work than
-        # the rank0 process, then we need to keep calling reduce so the rank0 process doesn't block
-        for i in range(max(inds_nums) - len(inds)):
-            losses = mpi.reduce_max(comm, losses)
-            accuracies = mpi.reduce_max(comm, accuracies)
+                cnt += 1
 
-        total_time = time.time() - start_time
-        print('Rank %d done!  Total time: %.2f Sync: %.2f' % (rank, total_time, total_sync))
+                print('{:.3f}% -- r={:.2f}, Loss Change={:.2f}, Acc={:.2f}... time elapsed:{:.2f} '
+                      .format(cnt/tot_exp_no, r, loss-base_loss, acc, time.time() - start_time))
 
-        f.close()
+
+            spherical_losses.append(losses)
+            spherical_accs.append(accs)
+            local_rs.append(r)
+
+            print('\nr={}, Avg. Loss Change={:.3f}, Avg. Acc={:.2f}\n'.format(
+                r, np.mean(spherical_losses[-1]), np.mean(spherical_accs[-1])))
+
+        np.savez_compressed(DIRECTION_FILES_FOLDER + '{}-sphere_loss'.format(exp_key),
+                            spherical_losses=spherical_losses,
+                            spherical_accs=spherical_accs,
+                            local_rs=local_rs)
 
 
 def test(testloader, model, criterion, save=False, folder=''):
@@ -353,7 +295,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -379,8 +321,9 @@ if __name__ == '__main__':
                              ' | '.join(model_names) +
                              ' (default: resnet20)')
     parser.add_argument('--depth', type=int, default=20, help='Model depth.')
-    # Miscs
-    parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
+    parser.add_argument('--max_r', default=1.5, type=int, help='max radiuses')
+    parser.add_argument('--r_levels', default=100, type=int, help='max radius')
+    parser.add_argument('--samples_no', default=100, type=int, help='number of samples per radius')
     # nsml
     parser.add_argument('--pause', default=0, type=int)
     parser.add_argument('--mode', default='train', type=str)
@@ -392,27 +335,14 @@ if __name__ == '__main__':
     use_cuda = int(GPU_NUM) != 0
 
     # Random seed
-    if args.manualSeed is None:
-        args.manualSeed = random.randint(1, 10000)
+    args.manualSeed = 123
     random.seed(args.manualSeed)
     torch.manual_seed(args.manualSeed)
     if use_cuda:
         torch.cuda.manual_seed_all(args.manualSeed)
 
-    # if args.mpi:
-    # comm = mpi.setup_MPI()
-    # rank, nproc = comm.Get_rank(), comm.Get_size()
-    # else:
-    comm, rank, nproc = None, 0, 1
-
-    # in case of multiple GPUs per node, set the GPU to use for each rank
-    # if args.cuda:
-    if not torch.cuda.is_available():
-        raise Exception('User selected cuda option, but cuda is not available on this machine')
-    gpu_count = torch.cuda.device_count()
-    torch.cuda.set_device(rank % gpu_count)
-    print('Rank %d use GPU %d of %d GPUs on %s' %
-          (rank, torch.cuda.current_device(), gpu_count, socket.gethostname()))
+    if use_cuda:
+        torch.cuda.manual_seed_all(args.manualSeed)
 
     # experiments
     if 'color' in args.dataset:
@@ -446,7 +376,6 @@ if __name__ == '__main__':
         run_experiment(args,
                        experiments=experiments,
                        dsc=dsc,
-                       samples=100,
                        scope=locals())
         print("done")
 

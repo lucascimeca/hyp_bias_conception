@@ -33,7 +33,7 @@ def h5_to_vtp(surf_file, surf_name='train_loss', log=False, zmax=-1, interp=-1):
     #set this to True to generate polygons
     show_polys = True
 
-    f = h5py.File(surf_file,'r')
+    f = h5py.File(surf_file, 'r')
 
     [xcoordinates, ycoordinates] = np.meshgrid(f['xcoordinates'][:], f['ycoordinates'][:][:])
     vals = f[surf_name]

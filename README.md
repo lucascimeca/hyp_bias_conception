@@ -21,9 +21,11 @@ NSML COMMANDS
 - nsml run -e main_augmentation.py -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 
+# --- observe loss around local minima solutions
+- nsml run -e main_surf_test.py -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 # to retrieve tflogs 							  
-- nsml download KR95157/dsprites/SESS_NO Downloads -s /app/runs.zip
+- nsml download KR95157/ColorDSprites/26 Downloads -s /app/runs.zip
 
 # to push dataset
 nsml dataset push ColorDSprites data/
