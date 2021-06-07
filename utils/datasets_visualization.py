@@ -5,19 +5,19 @@ import matplotlib
 # import matplotlib.pyplot as plt
 # matplotlib.use('TkAgg')
 
-########## regular DSprites #################
-# dsc = BWDSpritesCreator(data_path='./../data/')
-# dsc.get_dataset_fvar(
-#     number_of_samples=10000,
-#     features_variants=('shape', 'scale'),
-#     color=(0, 1),
-#     shape=(0, 3),
-#     scale=(0.5, 1),
-#     orientation=(0, 2 * np.pi),
-#     x_position=(0, 1),
-#     y_position=(0, 1),
-# )
-# dsc.show_tasks()
+######### regular DSprites #################
+dsc = BWDSpritesCreator(data_path='./../data/')
+dsc.get_dataset_fvar(
+    number_of_samples=10000,
+    features_variants=('shape', 'scale'),
+    color=(0, 1),
+    shape=(0, 3),
+    scale=(0.5, 1),
+    orientation=(0, 2 * np.pi),
+    x_position=(0, 1),
+    y_position=(0, 1),
+)
+dsc.show_tasks()
 
 ########### Color DSprites #################
 

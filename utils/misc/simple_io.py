@@ -25,12 +25,14 @@ def file_exists(filename):
         return True
     return False
 
+
 def remove_file(filename):
     try:
         os.remove(filename)
         return True
     except:
         return False
+
 
 def folder_exists(folder_name):
     return pt.isdir(folder_name)

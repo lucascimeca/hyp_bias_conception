@@ -196,18 +196,32 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     num_classes=num_classes,
                     depth=args.depth,
                     no_of_channels=no_of_channels)
+                # optimizer = optim.SGD(model.parameters(),
+                #                           lr=args.lr,
+                #                           momentum=args.momentum,
+                #                           weight_decay=args.weight_decay)
+                # optimizer = optim.RMSprop(model.parameters())
+                optimizer = optim.Adadelta(model.parameters())
+                # optimizer = optim.Adam(model.parameters())
             elif args.arch.endswith('convnet'):
                 model = ConvNet(
                     num_classes=num_classes,
                     no_of_channels=no_of_channels)
+                optimizer = optim.Adam(model.parameters())
             elif args.arch.endswith('ffnet'):
                 model = FFNet(
                     num_classes=num_classes,
                     no_of_channels=no_of_channels)
+                optimizer = optim.Adam(model.parameters())
             elif args.arch.endswith('vit'):
                 model = VisionTransformer(
-                    img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
+                    img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
                     norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes, in_chans=no_of_channels)
+                # optimizer = optim.AdamW(model.parameters(), lr=3e-2, weight_decay=1e-4)
+                optimizer = optim.SGD(model.parameters(),
+                                      lr=3e-2,
+                                      momentum=0.9,
+                                      weight_decay=1e-4)
             else:
                 raise NotImplementedError()
 
@@ -218,7 +232,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             criterion = nn.CrossEntropyLoss()
 
-            optimizer = optim.Adam(model.parameters())
+            state = {k: v for k, v in args._get_kwargs()}
 
             nsml.bind(model=model)
             if args.pause:
@@ -241,7 +255,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
                 task_writers[task] = SummaryWriter(log_dir=folder)
 
-            print("\n########### Experiment Set: {}, Sample: {} ###########\n".format(experiments[exp_key], sample_no))
+            print("\n########### Experiment Set: {} of {}, Sample: {} ###########\n".format(exp_key, experiments[exp_key], sample_no))
 
             if not NSML:
                 # open tensorboard online
@@ -259,15 +273,15 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             # Train and val round one
             best_accuracies = {}  # best test accuracy
             best_loss = None
+            best_acc = None
             start_time = time.time()
             patience_cnt = 0
-            weight_states_to_save = []
+            weight_states_to_save = None
             zero_loss = False
-            patience_cnt = 0
             for epoch in range(args.epochs):
 
                 # adjust_learning_rate(optimizer, epoch, args)
-                print('\nEpoch: [%d | %d]' % (epoch + 1, args.epochs))
+                print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
                 losses = AverageMeter()
                 accuracies = AverageMeter()
                 for batch_idx, (_, inputs, targets) in enumerate(trainloader):
@@ -289,6 +303,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     loss.backward()
                     optimizer.step()
                     # report result
+
                     nsml.report(
                         epoch=epoch,
                         step=time.time() - start_time,
@@ -297,66 +312,66 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                         train__loss=loss.data.item()
                     )
 
-                    # update tensorboard if not in NSML
-                    # if not NSML:
                     task_writers['round_one'].add_scalar('round_one/train_loss', loss, epoch)
                     task_writers['round_one'].add_scalar('round_one/train_acc', acc, epoch)
 
                 print('Epoch {}: train_loss={}, train_acc={}'.
                       format(epoch, losses.avg, accuracies.avg))
 
-                print("TESTING ACCURACY")
-                update = False
-                if best_loss is None or best_loss > losses.avg:
-                    best_loss = copy.copy(losses.avg)
-                    update = True
+                # print("TESTING ACCURACY")
 
-                test_reports_loss = {}
-                test_reports_acc = {}
-                for task in testloaders.keys():
-                    folder = "{}{}/".format(logs_folder, task)
-                    test_loss, test_acc = test(testloaders[task], model, criterion,
-                                               save=epoch == args.epochs-1,
-                                               folder=folder)
-                    test_reports_loss['test__loss_'+task] = test_loss
-                    test_reports_acc['test__acc_'+task] = test_acc
-                    if task not in best_accuracies.keys() or test_acc > best_accuracies[task]:
-                        best_accuracies[task] = test_acc
+                # test_reports_loss = {}
+                # test_reports_acc = {}
+                # for task in testloaders.keys():
+                #     folder = "{}{}/".format(logs_folder, task)
+                #     test_loss, test_acc = test(testloaders[task], model, criterion,
+                #                                save=epoch == args.epochs-1,
+                #                                folder=folder)
+                #     test_reports_loss['test__loss_'+task] = test_loss
+                #     test_reports_acc['test__acc_'+task] = test_acc
+                #     if task not in best_accuracies.keys() or test_acc > best_accuracies[task]:
+                #         best_accuracies[task] = test_acc
+                #
+                #         if test_loss == 0:
+                #             zero_loss = True
 
-                        if test_loss == 0:
-                            zero_loss = True
+                    # print("{} {}, BEST {}".format(task, test_acc, best_accuracies[task]))
 
-                    print("{} {}, BEST {}".format(task, test_acc, best_accuracies[task]))
+                    # task_writers[task].add_scalar('round_one/test', test_acc, epoch)
+                    # task_writers[task].flush()
 
-                    task_writers[task].add_scalar('round_one/test', test_acc, epoch)
-                    task_writers[task].flush()
-
-                nsml.report(
-                    summary=True,
-                    epoch=epoch,
-                    step=time.time() - start_time,
-                    **test_reports_acc,
-                    **test_reports_loss
-                )
+                # nsml.report(
+                #     summary=True,
+                #     epoch=epoch,
+                #     step=time.time() - start_time,
+                #     **test_reports_acc,
+                #     **test_reports_loss
+                # )
 
                 # if any task improved then save
-                if update:
+                if (best_loss is None or losses.avg < best_loss) \
+                        and losses.avg < 0.05 and accuracies.avg == 100.0:
+                    print("---- potential local minima at epoch: {}".format(epoch))
+                    best_loss = losses.avg
+                    best_acc = accuracies.avg
                     patience_cnt = 0
-                    nsml.save(global_step)
-                    weight_states_to_save += [copy.deepcopy(model.state_dict())]
-                    if len(weight_states_to_save) >= args.ESWTS:
-                        weight_states_to_save = weight_states_to_save[-3:]
-                else:
-                    patience_cnt += 1
+                    weight_states_to_save = copy.deepcopy(model.state_dict())
 
-                if patience_cnt >= args.patience or epoch == args.epochs-1:
-                    for j, weights in enumerate(weight_states_to_save):
-                        torch.save(weights, '{}weights-{}-{}-{}.pth'.format(
-                            logs_folder,
-                            exp_key,
-                            sample_no,
-                            epoch - args.ESWTS + j
-                        ))
+                elif best_loss is not None and losses.avg >= best_loss:
+                        patience_cnt += 1
+
+                if patience_cnt >= args.patience:
+                    if epoch == args.epochs-1:
+                        best_loss = losses.avg
+                        best_acc = accuracies.avg
+                    torch.save(model.state_dict(), '{}weights-{}-{}-{}---loss_{:.4f}-acc_{}.pth'.format(
+                        logs_folder,
+                        exp_key,
+                        sample_no,
+                        epoch,
+                        best_loss,
+                        int(best_acc)
+                    ))
                     break
 
             sample_no += 1
@@ -378,22 +393,22 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=200, type=int, metavar='N',
+    parser.add_argument('--epochs', default=2000, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
     parser.add_argument('--test-batch', default=256, type=int, metavar='N',
                         help='test batchsize')
-    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--drop', '--dropout', default=0, type=float,
                         metavar='Dropout', help='Dropout ratio')
-    parser.add_argument('--schedule', type=int, nargs='+', default=[500],
+    parser.add_argument('--schedule', type=int, nargs='+', default=[40, 80, 120],
                         help='Decrease learning rate at these epochs.')
     parser.add_argument('--gamma', type=float, default=0.1, help='LR is multiplied by gamma on schedule.')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
-    parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
+    parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
     parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
@@ -421,7 +436,6 @@ if __name__ == '__main__':
                         metavar='ESWTS', help='Early Stopping Weights to Save')
 
     args = parser.parse_args()
-    state = {k: v for k, v in args._get_kwargs()}
 
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0

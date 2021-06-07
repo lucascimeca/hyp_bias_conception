@@ -179,8 +179,11 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         criterion = nn.CrossEntropyLoss()
 
         base_loss, base_acc = test(trainloader, model, criterion, save=False)
-
         print('\n\n {} -----  BASE LOSS={:.3f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
+        print(sample_file)
+
+        # continue
+
         spherical_losses = []
         spherical_accs = []
         local_rs = []
@@ -218,8 +221,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                 cnt += 1
 
                 print('{:.3f}% -- r={:.2f}, Loss Change={:.2f}, Acc={:.2f}... time elapsed:{:.2f} '
-                      .format(cnt/tot_exp_no, r, loss-base_loss, acc, time.time() - start_time))
-
+                      .format(100*cnt/tot_exp_no, r, loss-base_loss, acc, time.time() - start_time))
 
             spherical_losses.append(losses)
             spherical_accs.append(accs)
@@ -228,7 +230,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
             print('\nr={}, Avg. Loss Change={:.3f}, Avg. Acc={:.2f}\n'.format(
                 r, np.mean(spherical_losses[-1]), np.mean(spherical_accs[-1])))
 
-        np.savez_compressed(DIRECTION_FILES_FOLDER + '{}-sphere_loss'.format(exp_key),
+        np.savez_compressed(DIRECTION_FILES_FOLDER + '{}_{}-sphere_loss'.format(exp_key, sample_no),
                             spherical_losses=spherical_losses,
                             spherical_accs=spherical_accs,
                             local_rs=local_rs)
@@ -295,7 +297,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -321,9 +323,9 @@ if __name__ == '__main__':
                              ' | '.join(model_names) +
                              ' (default: resnet20)')
     parser.add_argument('--depth', type=int, default=20, help='Model depth.')
-    parser.add_argument('--max_r', default=1.5, type=int, help='max radiuses')
-    parser.add_argument('--r_levels', default=100, type=int, help='max radius')
-    parser.add_argument('--samples_no', default=100, type=int, help='number of samples per radius')
+    parser.add_argument('--max_r', default=1., type=int, help='max radiuses')
+    parser.add_argument('--r_levels', default=50, type=int, help='max radius')
+    parser.add_argument('--samples_no', default=300, type=int, help='number of samples per radius')
     # nsml
     parser.add_argument('--pause', default=0, type=int)
     parser.add_argument('--mode', default='train', type=str)

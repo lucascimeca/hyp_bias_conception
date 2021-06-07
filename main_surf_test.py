@@ -373,7 +373,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
