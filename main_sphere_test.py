@@ -93,7 +93,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         sample_no = fs[2]
         feature_to_augment = exp_key.split("_")[0]
 
-        # Data
+        #  -------------- DATA --------------------------
         resize = None
         if 'face' in args.dataset:
             resize = (64, 64)
@@ -103,13 +103,25 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
             number_of_samples=10000,
             features_variants=experiments[exp_key],
             resize=resize,
-            train_split=0.5,
-            valid_split=0.3,
+            train_split=1.,
+            valid_split=0.,
         )
 
         num_classes = dsc.no_of_feature_lvs
 
-        # Model
+        # create train dataset for main diagonal -- round one
+        training_data = round_one_dataset['train']
+
+        # augment with offdiagonal if necessary
+        if 'augmentation' in exp_key:
+            training_data.add_indeces(round_two_datasets[feature_to_augment]['train'].get_indeces())  # main diag
+
+        # create train dataset for main diagonal -- round one
+        trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
+                                      shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+
+
+        #  -------------- MODEL --------------------------
         print("==> creating model '{}'".format(args.arch))
         if 'color' in args.dataset or 'face' in args.dataset:
             no_of_channels = 3
@@ -146,44 +158,15 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         cudnn.benchmark = True
         print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
 
-        nsml.bind(model=model)
-        if args.pause:
-            nsml.paused(scope=locals())
-
-        if 'augmentation' in exp_key:
-
-            training_data = copy.deepcopy(round_two_datasets[feature_to_augment]['train'])  # off diag
-            training_data.add_indeces(round_one_dataset['train'].get_indeces())       # main diag
-
-            test_data = copy.deepcopy(round_two_datasets[feature_to_augment]['valid'])  # off diag
-            test_data.add_indeces(round_one_dataset['valid'].get_indeces())       # main diag
-
-            # create train dataset for main diagonal -- round one
-            trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-        else:
-
-            # create train dataset for main diagonal -- round one
-            trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-            # create train all validation datasets
-            testloaders = {"round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
-                                                                                batch_size=args.test_batch,
-                                                                                shuffle=True,
-                                                                                num_workers=args.workers,
-                                                                                worker_init_fn=seed_worker)
-                           for feature in round_two_datasets.keys()}
 
         criterion = nn.CrossEntropyLoss()
 
         base_loss, base_acc = test(trainloader, model, criterion, save=False)
-        print('\n\n {} -----  BASE LOSS={:.3f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
+        print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
 
         # continue
-
+        continue
         spherical_losses = []
         spherical_accs = []
         local_rs = []
@@ -297,7 +280,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -326,6 +309,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_r', default=1., type=int, help='max radiuses')
     parser.add_argument('--r_levels', default=50, type=int, help='max radius')
     parser.add_argument('--samples_no', default=300, type=int, help='number of samples per radius')
+    # Miscs
+    parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
     # nsml
     parser.add_argument('--pause', default=0, type=int)
     parser.add_argument('--mode', default='train', type=str)
@@ -337,12 +322,10 @@ if __name__ == '__main__':
     use_cuda = int(GPU_NUM) != 0
 
     # Random seed
-    args.manualSeed = 123
+    if args.manualSeed is None:
+        args.manualSeed = random.randint(1, 10000)
     random.seed(args.manualSeed)
     torch.manual_seed(args.manualSeed)
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.manualSeed)
-
     if use_cuda:
         torch.cuda.manual_seed_all(args.manualSeed)
 
@@ -358,7 +341,7 @@ if __name__ == '__main__':
         }
         dsc = ColorDSpritesCreator(
             data_path='./data/',
-            filename="color_dsprites.h5"
+            filename="color_dsprites_pruned.h5"
         )
     elif 'face' in args.dataset:
         experiments = {

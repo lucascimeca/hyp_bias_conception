@@ -434,7 +434,7 @@ if __name__ == '__main__':
         }
         dsc = ColorDSpritesCreator(
             data_path='./data/',
-            filename="color_dsprites.h5"
+            filename="color_dsprites_pruned.h5"
         )
     elif 'multi' in args.dataset:
         # experiments

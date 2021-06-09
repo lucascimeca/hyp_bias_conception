@@ -6,25 +6,25 @@ import matplotlib
 # matplotlib.use('TkAgg')
 
 ######### regular DSprites #################
-dsc = BWDSpritesCreator(data_path='./../data/')
-dsc.get_dataset_fvar(
-    number_of_samples=10000,
-    features_variants=('shape', 'scale'),
-    color=(0, 1),
-    shape=(0, 3),
-    scale=(0.5, 1),
-    orientation=(0, 2 * np.pi),
-    x_position=(0, 1),
-    y_position=(0, 1),
-)
-dsc.show_tasks()
+# dsc = BWDSpritesCreator(data_path='./../data/', filename='bw_dsprites_pruned.h5')
+# dsc.get_dataset_fvar(
+#     number_of_samples=10000,
+#     features_variants=('orientation', 'x_position'),
+#     color=(0, 1),
+#     shape=(0, 3),
+#     scale=(0.5, 1),
+#     orientation=(0, 2 * np.pi),
+#     x_position=(0, 1),
+#     y_position=(0, 1),
+# )
+# dsc.show_tasks()
 
 ########### Color DSprites #################
 
-dsc = ColorDSpritesCreator(data_path='./../data/')
+dsc = ColorDSpritesCreator(data_path='./../data/', filename='color_dsprites_pruned.h5')
 dsc.get_dataset_fvar(
     number_of_samples=10000,
-    features_variants=('color', 'shape', 'scale', 'orientation'),
+    features_variants=('shape', 'scale', 'orientation', 'color'),
     color=(0, 4),
     shape=(0, 3),
     scale=(0.5, 1),

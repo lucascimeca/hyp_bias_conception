@@ -12,3 +12,4 @@ pyyaml
 mpi4py
 scikit-learn
 seaborn
+tabulate

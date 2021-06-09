@@ -98,8 +98,9 @@ class FeatureDataset(Dataset):
     def get_original_index(self, idx):
         return self.indeces[idx]
 
-    def add_indeces(self, indeces):
-        self.indeces = sorted(self.indeces + indeces)
+    def merge_new_dataset(self, feature_dataset):
+        self.indeces = sorted(self.indeces + feature_dataset.indeces)
+        self.labels[feature_dataset.indeces] = feature_dataset.labels[feature_dataset.indeces]
 
     def get_indeces(self):
         return self.indeces
@@ -129,6 +130,14 @@ class FeatureCombinationCreator:
         'orientation': 3,
         'x_position': 4,
         'y_position': 5,
+    }
+    latent_type = {
+        'color': 'cat',
+        'shape': 'cat',
+        'scale': 'ord',
+        'orientation': 'ord',
+        'x_position': 'ord',
+        'y_position': 'ord',
     }
 
     latents_sizes = np.array([1,  3,  6, 40, 32, 32])
@@ -247,7 +256,7 @@ class FeatureCombinationCreator:
         return split_data(self.torch_dataset, train_split, valid_split)
 
     def get_dataset_fvar(self, number_of_samples='all', train_split=0.7, valid_split=0.2,
-                         features_variants=('shape', 'scale'), resize=None, **latent_factors):
+                         features_variants=('shape', 'scale'), resize=None):
         """
         The function creates two rounds of datasets based on multiple varying features.
         The first round is based on the main diagonal, when varying the two features (the number of variations is
@@ -261,8 +270,6 @@ class FeatureCombinationCreator:
         :param train_split: (float) proportion of training data. Used for all returned datasets.
         :param valid_split: (float) proportion of validation data. Used for all returned datasets.
         :param features_variants: tuple(str, str, ...) name of features to use for label matrix
-        :param latent_factors: additional into. It allows to specify ranges to consider for each feature
-                               (see _sample_latent).
         :return: (dict, dict) two dictionaries containing the datasets for round one and round two.
         """
 
@@ -275,7 +282,7 @@ class FeatureCombinationCreator:
         for feature in self.task_dict.keys():
             self.task_dict[feature] = [round(x) for x in
                                        np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
-                                                   self.no_of_feature_lvs)]
+                                                   self.no_of_feature_lvs, )]
 
         # ----- Create train set, second train set and valid set ---
         all_latents = np.array(self.dataset['latents_classes'])
@@ -305,7 +312,9 @@ class FeatureCombinationCreator:
         # sample if you want less samples
         if isinstance(number_of_samples, int):
             if len(diag_indeces) > number_of_samples:
-                choice = np.random.choice(len(diag_indeces), size=number_of_samples)
+                # rng = np.random.default_rng(12345)
+                # choice = rng.choice(len(diag_indeces), size=number_of_samples)
+                choice = np.linspace(0, len(diag_indeces), number_of_samples, endpoint=False).astype(np.int)
                 diag_indeces = diag_indeces[choice]
             elif len(diag_indeces) < number_of_samples:
                 print(
@@ -316,7 +325,9 @@ class FeatureCombinationCreator:
 
             for feature in self.feature_variants:
                 if len(offdiag_indeces[feature]) > number_of_samples:
-                    choice = np.random.choice(len(offdiag_indeces[feature]), size=number_of_samples)
+                    # rng = np.random.default_rng(12345)
+                    # choice = rng.choice(len(offdiag_indeces[feature]), size=number_of_samples)
+                    choice = np.linspace(0, len(offdiag_indeces[feature]), number_of_samples, endpoint=False).astype(np.int)
                     offdiag_indeces[feature] = offdiag_indeces[feature][choice]
                 elif len(offdiag_indeces[feature]) < number_of_samples:
                     print(
@@ -455,7 +466,7 @@ class FeatureCombinationCreator:
 
     def show_tasks(self):
 
-        features = list(self.task_dict.keys())[2:4]
+        features = list(self.task_dict.keys())
 
         spacing = self.no_of_feature_lvs // 10 + 1
         imgs_num = len(list(range(0, self.no_of_feature_lvs, spacing)))
@@ -581,6 +592,15 @@ class MultiDSpritesCreator(FeatureCombinationCreator):
         'x_position': 5,
         'y_position': 6,
     }
+    latent_type = {
+        'color': 'cat',
+        'shape': 'cat',
+        'scale': 'ord',
+        'orientation': 'ord',
+        'x_position': 'ord',
+        'y_position': 'ord',
+        'object_number': 'ord',
+    }
 
     latents_sizes = np.array([4, 1, 3, 6, 40, 32, 32])
 
@@ -618,6 +638,15 @@ class MultiColorDSpritesCreator(FeatureCombinationCreator):
         'x_position': 5,
         'y_position': 6,
     }
+    latent_type = {
+        'color': 'cat',
+        'shape': 'cat',
+        'scale': 'ord',
+        'orientation': 'ord',
+        'x_position': 'ord',
+        'y_position': 'ord',
+        'object_number': 'ord',
+    }
 
     latents_sizes = np.array([4, 4, 3, 6, 40, 32, 32])
 
@@ -642,6 +671,12 @@ class UTKFaceCreator(FeatureCombinationCreator):
             'age': 1,
             'gender': 2,
             'ethnicity': 3,
+        }
+        self.latent_type = {
+            'identity': 'cat',
+            'age': 'ord',
+            'gender': 'cat',
+            'ethnicity': 'cat',
         }
 
         self.latents_ranges = {}

@@ -87,7 +87,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         sample_no = fs[2]
         feature_to_augment = exp_key.split("_")[0]
 
-        # Data
+        #  -------------- DATA --------------------------
         resize = None
         if 'face' in args.dataset:
             resize = (64, 64)
@@ -97,13 +97,25 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             number_of_samples=10000,
             features_variants=experiments[exp_key],
             resize=resize,
-            train_split=0.5,
-            valid_split=0.3,
+            train_split=1.,
+            valid_split=0.,
         )
 
         num_classes = dsc.no_of_feature_lvs
 
-        # Model
+        # create train dataset for main diagonal -- round one
+        training_data = round_one_dataset['train']
+
+        # augment with offdiagonal if necessary
+        if 'augmentation' in exp_key:
+            training_data.add_indeces(round_two_datasets[feature_to_augment]['train'].get_indeces())  # main diag
+
+        # create train dataset for main diagonal -- round one
+        trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
+                                      shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+
+
+        #  -------------- MODEL --------------------------
         print("==> creating model '{}'".format(args.arch))
         if 'color' in args.dataset or 'face' in args.dataset:
             no_of_channels = 3
@@ -179,32 +191,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         if args.pause:
             nsml.paused(scope=locals())
 
-        if 'augmentation' in exp_key:
-
-            training_data = copy.deepcopy(round_two_datasets[feature_to_augment]['train'])  # off diag
-            training_data.add_indeces(round_one_dataset['train'].get_indeces())       # main diag
-
-            test_data = copy.deepcopy(round_two_datasets[feature_to_augment]['valid'])  # off diag
-            test_data.add_indeces(round_one_dataset['valid'].get_indeces())       # main diag
-
-            # create train dataset for main diagonal -- round one
-            trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-        else:
-
-            # create train dataset for main diagonal -- round one
-            trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-
-            # create train all validation datasets
-            testloaders = {"round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
-                                                                                batch_size=args.test_batch,
-                                                                                shuffle=True,
-                                                                                num_workers=args.workers,
-                                                                                worker_init_fn=seed_worker)
-                           for feature in round_two_datasets.keys()}
 
         # ---- LOGS folder ----
         exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
@@ -353,7 +339,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -373,7 +359,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -426,7 +412,7 @@ if __name__ == '__main__':
         }
         dsc = ColorDSpritesCreator(
             data_path='./data/',
-            filename="color_dsprites.h5"
+            filename="color_dsprites_pruned.h5"
         )
     elif 'face' in args.dataset:
         experiments = {
