@@ -54,23 +54,42 @@ class Rescale(object):
 
 class FeatureDataset(Dataset):
 
+    indices_by_label = None
+
     def __init__(self, dataset, latents, classes, indeces, no_of_feature_lvs, latent_to_idx, task_dict, feature,
-                 resize=None):
+                 resize=None, latent_type=None, create_subsets=False):
         self.dataset = dataset
         self.latents = latents
         self.classes = classes
-        self.indeces = sorted(indeces)
+        self.indeces = np.array(sorted(indeces))
         self.no_of_feature_lvs = no_of_feature_lvs
         self.latent_to_idx = latent_to_idx
+        self.latent_type = latent_type
         self.task_dict = task_dict
         self.feature = feature
         self.resize = resize
 
-        # labels
+        self._create_labels()
+
+        if create_subsets:
+            self._create_subsets()
+
+    def _create_labels(self):
         self.labels = np.zeros((self.classes.shape[0]))-1
+        if self.latent_type[self.feature] == 'ord':
+            for lv in range(self.no_of_feature_lvs):
+                same_cell_condition = np.logical_and(self.classes[:, self.latent_to_idx[self.feature]] > self.task_dict[self.feature][lv], self.classes[:, self.latent_to_idx[self.feature]] <= self.task_dict[self.feature][lv+1])
+                self.labels[same_cell_condition] = lv
+        else:
+            for lv in range(self.no_of_feature_lvs):
+                same_cell_condition = self.classes[:, self.latent_to_idx[self.feature]] == self.task_dict[self.feature][lv]
+                self.labels[same_cell_condition] = lv
+
+    def _create_subsets(self):
+        self.indices_by_label = {}
+        data_indeces = np.array(range(len(self.indeces)))
         for lv in range(self.no_of_feature_lvs):
-            same_cell_condition = self.classes[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]
-            self.labels[same_cell_condition] = lv
+            self.indices_by_label[lv] = data_indeces[self.labels[self.indeces] == lv]
 
     def __len__(self):
         return len(self.indeces)
@@ -99,11 +118,27 @@ class FeatureDataset(Dataset):
         return self.indeces[idx]
 
     def merge_new_dataset(self, feature_dataset):
-        self.indeces = sorted(self.indeces + feature_dataset.indeces)
+        self.indeces = sorted(np.concatenate((self.indeces , feature_dataset.indeces), axis=0))
         self.labels[feature_dataset.indeces] = feature_dataset.labels[feature_dataset.indeces]
+        self.indices_by_label = None
 
     def get_indeces(self):
         return self.indeces
+
+    def get_sample_by_class(self, label, idx):
+        if self.indices_by_label is None:
+            self._create_subsets()
+        return self.dataset[self.indices_by_label[label][idx]]
+
+    def get_class_length(self, label):
+        if self.indices_by_label is None:
+            self._create_subsets()
+        return len(self.indices_by_label[label])
+
+    def get_indeces_by_class(self, label):
+        if self.indices_by_label is None:
+            self._create_subsets()
+        return self.indices_by_label[label]
 
 
 class FeatureCombinationCreator:
@@ -274,38 +309,80 @@ class FeatureCombinationCreator:
         """
 
         self.feature_variants = features_variants
+
+        # ----- Create train set, second train set and valid set ---
+        all_latent_classes = np.array(self.dataset['latents_classes'])
+
+        # Find corresponding indeces
+        all_indeces = np.array(list(range(all_latent_classes.shape[0])))
+
         # ----- create combination of features for first and second training -----
         self.no_of_feature_lvs = min(
             self.latents_sizes[i] for i in [self.latent_to_idx[latent] for latent in self.feature_variants])
         self.task_dict = {feature: {} for feature in self.feature_variants}
 
+        # create feature levels (for relabeling), different behaviour depending if 'categorical' or 'ordinal' variable
         for feature in self.task_dict.keys():
-            self.task_dict[feature] = [round(x) for x in
-                                       np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
-                                                   self.no_of_feature_lvs, )]
+            # if it's an ordinal variable, then make a balanced range
+            if self.latent_type[feature] == 'ord':
+                print('## creating range for variable: {}...'.format(feature))
+                lvs = [0]
+                percents = []
+                for lv in range(self.no_of_feature_lvs):
+                    objects_left = (self.latents_classes[:, self.latent_to_idx[feature]] > lvs[-1]).astype(int).sum()
+                    balance_mark = objects_left/(self.no_of_feature_lvs-lv)
 
-        # ----- Create train set, second train set and valid set ---
-        all_latents = np.array(self.dataset['latents_classes'])
+                    best_score = objects_left
+                    prev_score = 1.
+                    best_idx = 0
+                    percent = 100
+                    for cut_off_idx in range(lvs[-1]+1, self.latents_sizes[self.latent_to_idx[feature]]):
+                        obj_cnt = np.logical_and(self.latents_classes[:, self.latent_to_idx[feature]] > lvs[-1], self.latents_classes[:, self.latent_to_idx[feature]] <= cut_off_idx).astype(int).sum()
+                        # lower score is better (more balance dateset)
+                        score = abs(obj_cnt-balance_mark)
+                        if score < best_score:
+                            best_score = score
+                            best_idx = cut_off_idx
+                            percent = obj_cnt*100/self.latents_classes.shape[0]
+                        elif prev_score <= score:
+                            break
+                        prev_score = score
+                    percents.append(percent)
+                    lvs.append(best_idx)
 
-        # Find corresponding indeces
-        all_indeces = np.array(list(range(all_latents.shape[0])))
+                self.task_dict[feature] = lvs
+                print("cutoffs for {} found at {}".format(feature, lvs[1:]))
+                print("percents for {} found at {}".format(feature, percents))
+
+            # if it's a categorical, then just pick two
+            else:
+                self.task_dict[feature] = [round(x) for x in
+                                           np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
+                                                       self.no_of_feature_lvs, )]
 
         # first train set is the feature combination matrix diagonal (linearize booleans for faster conditioning)
         diag_condition = np.array([False] * self.dataset['imgs'].shape[0])  # initialize boolens for "OR" chain
         for lv in range(self.no_of_feature_lvs):
             same_cell_condition = np.array([True] * self.dataset['imgs'].shape[0])  # initialize boolens for "AND" chain
             for feature in self.feature_variants:
-                same_cell_condition &= all_latents[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # AND
+                if self.latent_type[feature] == 'ord':
+                    same_cell_condition &= np.logical_and(all_latent_classes[:, self.latent_to_idx[feature]] > self.task_dict[feature][lv], all_latent_classes[:, self.latent_to_idx[feature]] <= self.task_dict[feature][lv+1])   # AND
+                else:
+                    same_cell_condition &= all_latent_classes[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # AND
             diag_condition |= same_cell_condition
 
-        # extract diagonal and off-diagonal dataset elements
+
+        # extract off-diagonal dataset elements
         diag_indeces = all_indeces[diag_condition]
 
         offdiag_indeces = {}
         for feature in self.feature_variants:
             offdiag_condition = np.array([False] * self.dataset['imgs'].shape[0])
             for lv in range(self.no_of_feature_lvs):
-                offdiag_condition |= all_latents[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # OR
+                if self.latent_type[feature] == 'ord':
+                    offdiag_condition |= np.logical_and(all_latent_classes[:, self.latent_to_idx[feature]] > self.task_dict[feature][lv], all_latent_classes[:, self.latent_to_idx[feature]] <= self.task_dict[feature][lv+1])  # OR
+                else:
+                    offdiag_condition |= all_latent_classes[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # OR
 
             offdiag_indeces[feature] = all_indeces[np.logical_and(np.logical_not(diag_condition), offdiag_condition)]
 
@@ -354,6 +431,7 @@ class FeatureCombinationCreator:
                 resize=resize,
                 no_of_feature_lvs=self.no_of_feature_lvs,
                 latent_to_idx=self.latent_to_idx,
+                latent_type = self.latent_type,
                 task_dict=self.task_dict,
                 feature=self.feature_variants[0],  # doesn't matter within diag indeces
             ),
@@ -365,6 +443,7 @@ class FeatureCombinationCreator:
                 resize=resize,
                 no_of_feature_lvs=self.no_of_feature_lvs,
                 latent_to_idx=self.latent_to_idx,
+                latent_type = self.latent_type,
                 task_dict=self.task_dict,
                 feature=self.feature_variants[0]  # doesn't matter within diag indeces
             ),
@@ -376,6 +455,7 @@ class FeatureCombinationCreator:
                 resize=resize,
                 no_of_feature_lvs=self.no_of_feature_lvs,
                 latent_to_idx=self.latent_to_idx,
+                latent_type = self.latent_type,
                 task_dict=self.task_dict,
                 feature=self.feature_variants[0]  # doesn't matter within diag indeces
             ),
@@ -402,6 +482,7 @@ class FeatureCombinationCreator:
                     resize=resize,
                     no_of_feature_lvs=self.no_of_feature_lvs,
                     latent_to_idx=self.latent_to_idx,
+                    latent_type = self.latent_type,
                     task_dict=self.task_dict,
                     feature=feature
                 ),
@@ -413,6 +494,7 @@ class FeatureCombinationCreator:
                     resize=resize,
                     no_of_feature_lvs=self.no_of_feature_lvs,
                     latent_to_idx=self.latent_to_idx,
+                    latent_type = self.latent_type,
                     task_dict=self.task_dict,
                     feature=feature
                 ),
@@ -424,6 +506,7 @@ class FeatureCombinationCreator:
                     resize=resize,
                     no_of_feature_lvs=self.no_of_feature_lvs,
                     latent_to_idx=self.latent_to_idx,
+                    latent_type = self.latent_type,
                     task_dict=self.task_dict,
                     feature=feature
                 ),
@@ -481,8 +564,10 @@ class FeatureCombinationCreator:
 
             grid = gridspec.GridSpec(nrows=imgs_num, ncols=imgs_num, figure=fig)
             grid.update(wspace=.5, hspace=0.1)  # set the spacing between axes.
-            idx = 0
-            used_idxs = set()
+            used_diag_idxs = set()
+            used_offdiag_idxs = set()
+            idx_diag = 0
+            idx_off_diag = 0
             for i, i_label in enumerate(range(0, self.no_of_feature_lvs, spacing)):   # first feature
                 for j, j_label in enumerate(range(0, self.no_of_feature_lvs, spacing)):  # second feature
 
@@ -490,20 +575,21 @@ class FeatureCombinationCreator:
                     if i == j:
                         # main diagonal
                         dataset = self.round_one_dataset['train']
+                        used_idxs = used_diag_idxs
+                        idx = idx_diag
                     else:
                         # off diagonal
                         dataset = self.round_two_datasets[feature]['train']
+                        used_idxs = used_offdiag_idxs
+                        idx = idx_off_diag
 
-                    img_label = dataset[idx][2]
-                    count = 0
-                    while count <= len(dataset) and (img_label != label or idx in used_idxs):
-                        idx += 1
-                        count += 1
-                        try:
-                            img_label = dataset[idx][2]
-                        except:
-                            idx = 0
-                    if count >= len(dataset):
+                    class_indeces = dataset.get_indeces_by_class(label)
+
+                    cnt = 0
+                    while class_indeces[cnt] in used_idxs and cnt < len(class_indeces):
+                        cnt += 1
+
+                    if cnt >= len(class_indeces):
                         print("failed to find feature combination {} {}-{}".format(
                             feature, i_label, j_label
                         ))
@@ -511,6 +597,8 @@ class FeatureCombinationCreator:
                         sub_ax.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
 
                     else:
+                        idx = class_indeces[cnt]
+                        img_label = dataset[idx][2]
                         sub_ax = fig.add_subplot(grid[i, j], frameon=False)
 
                         used_idxs.add(idx)
@@ -520,8 +608,8 @@ class FeatureCombinationCreator:
                             self.cmap = None
                         else:
                             self.cmap = "Greys_r"
-                        # if img.dtype == torch.float:
-                        #     img = (img*255).to(torch.uint8)
+                        if img.max() <= 1.:
+                            img = (img*255).to(torch.uint8)
 
                         sub_ax.set_title("label: {} ($C^{}_{}={}$)".format(
                                 img_label.item(),
@@ -530,12 +618,17 @@ class FeatureCombinationCreator:
                                 self.latents_values[dataset.get_original_index(idx), self.latent_to_idx[feature]]),
                             fontsize=10)
                         if img.shape[0] > 1:
-                            plt.imshow(img.permute((1, 2, 0)).contiguous().squeeze().to(torch.uint8), cmap=self.cmap)
+                            plt.imshow(img.permute((1, 2, 0)).contiguous().squeeze(), cmap=self.cmap)
                         else:
                             plt.imshow(img.squeeze(), cmap=self.cmap)
-                        # plt.show()
-                        a = 1
 
+                    if i == j:
+                        idx_diag = idx
+                    else:
+                        idx_off_diag = idx
+
+            plt.show()
+            plt.close('all')
 
             fig.savefig(
                 "C:/Users/Luca/Downloads/{}.png".format(feature),
