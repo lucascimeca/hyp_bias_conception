@@ -19,11 +19,12 @@ import matplotlib
 # )
 # dsc.show_tasks()
 
+
 ########### Color DSprites #################
 
 dsc = ColorDSpritesCreator(data_path='./../data/', filename='color_dsprites_pruned.h5')
 dsc.get_dataset_fvar(
-    number_of_samples='all',
+    number_of_samples=5000,
     features_variants=('shape', 'scale', 'orientation', 'color'),
     train_split=1.,
     valid_split=0.
@@ -55,7 +56,7 @@ dsc.show_tasks()
 # Data
 dsc = UTKFaceCreator(data_path='./../data/', filename='UTKFace.h5')
 dsc.get_dataset_fvar(
-    number_of_samples='all',
+    number_of_samples=10000,
     features_variants=('ethnicity', 'age', 'gender'),
     resize=(64, 64),
     train_split=1.,

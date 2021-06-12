@@ -76,57 +76,9 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 resize=resize,
                 train_split=0.5,
                 valid_split=0.3,
-                color=(0, 4) if 'color' in args.dataset else (0, 1),
-                shape=(0, 3),
-                scale=(0.5, 1),
-                orientation=(0, 2 * np.pi),
-                x_position=(0, 1),
-                y_position=(0, 1),
             )
 
             num_classes = dsc.no_of_feature_lvs
-
-            # Model
-            print("==> creating model '{}'".format(args.arch))
-            if 'color' in args.dataset or 'face' in args.dataset:
-                no_of_channels = 3
-            else:
-                no_of_channels = 1
-
-            if args.arch.endswith('resnet'):
-                model = ResNet(
-                    num_classes=num_classes,
-                    depth=args.depth,
-                    no_of_channels=no_of_channels
-                )
-            elif args.arch.endswith('convnet'):
-                model = ConvNet(
-                    num_classes=num_classes,
-                    no_of_channels=no_of_channels)
-            elif args.arch.endswith('ffnet'):
-                model = FFNet(
-                    num_classes=num_classes,
-                    no_of_channels=no_of_channels)
-            elif args.arch.endswith('vit'):
-                model = VisionTransformer(
-                    img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
-                    norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes,
-                    in_chans=no_of_channels)
-            else:
-                raise NotImplementedError()
-
-            model = nn.DataParallel(model).cuda()
-
-            cudnn.benchmark = True
-            print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
-
-            criterion = nn.CrossEntropyLoss()
-
-            optimizer = optim.Adam(model.parameters())
-
-            nsml.bind(model=model)
-            if args.pause:
-                nsml.paused(scope=locals())
 
             # create train dataset for main diagonal -- round one
             round_one_trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
@@ -147,6 +99,57 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             testloaders['round_one'] = data.DataLoader(round_one_dataset['train'], batch_size=args.test_batch,
                                                        shuffle=True, num_workers=args.workers,
                                                        worker_init_fn=seed_worker)
+
+
+
+            # Model
+            print("==> creating model '{}'".format(args.arch))
+            if 'color' in args.dataset or 'face' in args.dataset:
+                no_of_channels = 3
+            else:
+                no_of_channels = 1
+
+            if args.arch.endswith('resnet'):
+                model = ResNet(
+                    num_classes=num_classes,
+                    depth=args.depth,
+                    no_of_channels=no_of_channels)
+                optimizer = optim.Adam(model.parameters())
+            elif args.arch.endswith('convnet'):
+                model = ConvNet(
+                    num_classes=num_classes,
+                    no_of_channels=no_of_channels)
+                optimizer = optim.Adam(model.parameters(),
+                                       weight_decay=1e-3)
+            elif args.arch.endswith('ffnet'):
+                model = FFNet(
+                    num_classes=num_classes,
+                    no_of_channels=no_of_channels)
+                optimizer = optim.Adam(model.parameters())
+            elif args.arch.endswith('vit'):
+                model = VisionTransformer(
+                    img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
+                    norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes, in_chans=no_of_channels)
+                optimizer = optim.SGD(model.parameters(),
+                                      lr=5e-3,
+                                      momentum=0.9,
+                                      weight_decay=1e-4)
+            else:
+                raise NotImplementedError()
+
+            model = nn.DataParallel(model).cuda()
+
+            cudnn.benchmark = True
+            print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
+
+            criterion = nn.CrossEntropyLoss()
+
+            optimizer = optim.Adam(model.parameters())
+
+            nsml.bind(model=model)
+            if args.pause:
+                nsml.paused(scope=locals())
+
 
             # ---- LOGS folder ----
             exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
@@ -269,9 +272,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 if update:
                     nsml.save(global_step)
 
-            # --- here do round two...
-            # for round_no, feature in round_two_datasets.keys():
-            #     pass
+
 
 
 def test(testloader, model, criterion, save=False, folder=''):
@@ -345,9 +346,9 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='multi', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
-    parser.add_argument('--epochs', default=25, type=int, metavar='N',
+    parser.add_argument('--epochs', default=120, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -365,7 +366,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

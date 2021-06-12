@@ -94,7 +94,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
         print('==> Preparing dataset dsprites ')
         round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-            number_of_samples=10000,
+            number_of_samples=5000,
             features_variants=experiments[exp_key],
             resize=resize,
             train_split=1.,
@@ -108,7 +108,9 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
         # augment with offdiagonal if necessary
         if 'augmentation' in exp_key:
-            training_data.add_indeces(round_two_datasets[feature_to_augment]['train'].get_indeces())  # main diag
+            training_data.merge_new_dataset(round_two_datasets[feature_to_augment]['train'])  # main diag
+
+        print("Data Length: {}".format(len(training_data)))
 
         # create train dataset for main diagonal -- round one
         trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
@@ -359,7 +361,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

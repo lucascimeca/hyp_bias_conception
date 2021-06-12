@@ -8,44 +8,29 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.parallel
-import torch.optim as optim
 import torch.utils.data as data
 import torch.distributed as dist
-import webbrowser
+import torch.optim as optim
 import zipfile
-import sys
 import traceback
+import tabulate
 
 import nsml
-import copy
 import models as models
 import copy
-import h5py
-import socket
-import os
 import sys
-import numpy as np
-import torchvision
-import utils.surf.mpi4pytorch as mpi
 import utils.mode_connectivity.curves as curves
+import utils.mode_connectivity.utils as curve_utils
 
-from utils.surf import dataloader
-from utils.surf import evaluation
-import utils.surf.projection as proj
 from utils.surf import net_plotter
-from utils.surf import plot_2D
-from utils.surf import plot_1D
-from utils.surf import scheduler
 from models.convnet import ConvNet
-from models.resnet import ResNet
+from models.resnet import ResNet, ResnetWithCurve
 from models.ffnet import FFNet
 from timm.models.vision_transformer import VisionTransformer
 from nsml import GPU_NUM
 from nsml import PARALLEL_WORLD, PARALLEL_PORTS, MY_RANK
 from utils import AverageMeter, accuracy
 from utils.data_loader import *
-from torch.utils.tensorboard import SummaryWriter
-from tensorboard import program
 from utils.misc.simple_io import *
 from functools import partial
 
@@ -53,6 +38,7 @@ NSML = True
 TENSORBOARD_FOLDER = "./runs/"
 DIRECTION_FILES_FOLDER = "./models/pretrained/direction_files/"
 DIRECTION_PRETRAINED_FOLDER = "./models/pretrained/"
+MODE_CONNECTIVITY_FOLDER = "./models/pretrained/mode_files/"
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 global_step = 0
@@ -87,30 +73,57 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
 
     for sample_from in files:
 
-        fs = sample_from.split('-')
-        exp_key = fs[1]
-        sample_no = fs[2]
-        feature_to_augment = exp_key.split("_")[0]
+        fs_from = sample_from.split('-')
+        exp_key_from = fs_from[1]
+        sample_no_from = fs_from[2]
+        feature_from = exp_key_from.split("_")[0]
 
         samples_to = [sample for sample in files if exp_key not in sample]
 
-        for samples_to in samples_to:
+        for sample_to in samples_to:
 
-            # Data
+            fs_to = sample_from.split('-')
+            exp_key_to = fs_to[1]
+            sample_no_to = fs_to[2]
+            feature_to = exp_key_to.split("_")[0]
+
+
+            #  -------------- DATA --------------------------
             resize = None
             if 'face' in args.dataset:
                 resize = (64, 64)
 
             print('==> Preparing dataset dsprites ')
             round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-                number_of_samples=10000,
-                features_variants=experiments[exp_key],
+                number_of_samples=5000,
+                features_variants=experiments[exp_key_from],
                 resize=resize,
-                train_split=0.5,
-                valid_split=0.3,
+                train_split=1.,
+                valid_split=0.,
             )
 
             num_classes = dsc.no_of_feature_lvs
+
+            # create train dataset for main diagonal -- round one
+            training_data = round_one_dataset['train']
+            training_data_to = copy.deepcopy(training_data)
+            training_data_from = copy.deepcopy(training_data)
+
+            training_data_to.merge_new_dataset(round_two_datasets[feature_to]['train'])
+            training_data_from.merge_new_dataset(round_two_datasets[feature_from]['train'])
+
+            print("Data diag: {}".format(len(training_data)))
+            print("Data offdiag {}: {}".format(feature_from, len(training_data_to)))
+            print("Data offdiag {}: {}".format(feature_to, len(training_data_from)))
+
+            # create train dataset for main diagonal -- round one
+            trainloader_diag = data.DataLoader(training_data, batch_size=args.train_batch,
+                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+            trainloader_from = data.DataLoader(training_data_to, batch_size=args.train_batch,
+                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+            trainloader_to = data.DataLoader(training_data_from, batch_size=args.train_batch,
+                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+
 
             # Model
             print("==> creating model '{}'".format(args.arch))
@@ -120,85 +133,50 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                 no_of_channels = 1
 
             if 'resnet' in args.arch:
-                model = ResNet(
+                architecture = ResnetWithCurve
+                base_model = ResNet(
                     num_classes=num_classes,
                     depth=args.depth,
                     no_of_channels=no_of_channels)
+                architecture.base = base_model
+                optimizer = optim.Adadelta(base_model.parameters())
             elif 'convnet' in args.arch:
-                model = ConvNet(
+                base_model = ConvNet(
                     num_classes=num_classes,
                     no_of_channels=no_of_channels)
+                optimizer = optim.Adadelta(base_model.parameters())
             elif 'ffnet' in args.arch:
-                model = FFNet(
+                base_model = FFNet(
                     num_classes=num_classes,
                     no_of_channels=no_of_channels)
             elif 'vit' in args.arch:
-                model = VisionTransformer(
+                base_model = VisionTransformer(
                     img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
                     norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes,
                     in_chans=no_of_channels)
+                optimizer = optim.SGD(model.parameters(),
+                                      lr=5e-3,
+                                      momentum=0.9,
+                                      weight_decay=1e-4)
             else:
                 raise NotImplementedError()
-
-            state_dict_to = torch.load(DIRECTION_PRETRAINED_FOLDER + samples_to)
-            state_dict_rex_to = {key[7:]: state_dict_to[key] for key in state_dict_to.keys()}
-
-
-            state_dict_from = torch.load(DIRECTION_PRETRAINED_FOLDER + samples_to)
-            state_dict_rex_from = {key[7:]: state_dict_to[key] for key in state_dict_to.keys()}
-
-            # model.load_state_dict(state_dict_rex_to)# deepcopy since state_dict are references
-            # model = nn.DataParallel(model).to(DEVICE)
 
             cudnn.benchmark = True
             print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
 
-            nsml.bind(model=model)
-            if args.pause:
-                nsml.paused(scope=locals())
-
-            if 'augmentation' in exp_key:
-
-                training_data = copy.deepcopy(round_two_datasets[feature_to_augment]['train'])  # off diag
-                training_data.add_indeces(round_one_dataset['train'].get_indeces())       # main diag
-
-                test_data = copy.deepcopy(round_two_datasets[feature_to_augment]['valid'])  # off diag
-                test_data.add_indeces(round_one_dataset['valid'].get_indeces())       # main diag
-
-                # create train dataset for main diagonal -- round one
-                trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
-                                              shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-            else:
-
-                # create train dataset for main diagonal -- round one
-                trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
-                                              shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-                # create train all validation datasets
-                testloaders = {"round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
-                                                                                    batch_size=args.test_batch,
-                                                                                    shuffle=True,
-                                                                                    num_workers=args.workers,
-                                                                                    worker_init_fn=seed_worker)
-                               for feature in round_two_datasets.keys()}
+            nsml.bind(model=base_model)
 
             criterion = nn.CrossEntropyLoss()
 
 
-
-
-
-            os.makedirs(args.dir, exist_ok=True)
-            with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
+            os.makedirs(MODE_CONNECTIVITY_FOLDER, exist_ok=True)
+            with open(os.path.join(MODE_CONNECTIVITY_FOLDER, 'command.sh'), 'w') as f:
                 f.write(' '.join(sys.argv))
                 f.write('\n')
 
             torch.backends.cudnn.benchmark = True
             torch.manual_seed(args.seed)
             torch.cuda.manual_seed(args.seed)
-
-            architecture = getattr(models, args.model)
 
 
             curve = curves.Bezier
@@ -209,9 +187,24 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                 args.num_bends,
                 args.fix_start,
                 args.fix_end,
-                architecture_kwargs=architecture.kwargs,
+                architecture_kwargs=base_model.kwargs,
             )
-            base_model = None
+
+
+            # k are the number of bends
+            for smpl, k in [(sample_from, 0), (sample_to, 2)]:
+
+                state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + smpl)
+                state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
+                base_model.load_state_dict(state_dict_rex)
+
+                print('Loading {} as point {}' % (smpl, k))
+                model.import_base_parameters(base_model, k)
+            if args.init_linear:
+                print('Linear initialization.')
+                model.init_linear()
+
+            model = nn.DataParallel(model).to(DEVICE)
             model.cuda()
 
             def learning_rate_schedule(base_lr, epoch, total_epochs):
@@ -224,55 +217,57 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                     factor = 0.01
                 return factor * base_lr
 
-            criterion = F.cross_entropy
-            regularizer = None if args.curve is None else curves.l2_regularizer(args.wd)
-            optimizer = torch.optim.SGD(
-                filter(lambda param: param.requires_grad, model.parameters()),
-                lr=args.lr,
-                momentum=args.momentum,
-                weight_decay=args.wd if args.curve is None else 0.0
-            )
+            regularizer = curves.l2_regularizer(args.wd)
+
+            if 'resnet' in args.arch:
+                optimizer = optim.Adadelta(model.parameters())
+            elif 'vit' in args.arch:
+                optimizer = optim.SGD(model.parameters(),
+                                      lr=5e-3,
+                                      momentum=0.9,
+                                      weight_decay=1e-4)
+
 
             start_epoch = 1
-            if args.resume is not None:
-                print('Resume training from %s' % args.resume)
-                checkpoint = torch.load(args.resume)
-                start_epoch = checkpoint['epoch'] + 1
-                model.load_state_dict(checkpoint['model_state'])
-                optimizer.load_state_dict(checkpoint['optimizer_state'])
 
-            columns = ['ep', 'lr', 'tr_loss', 'tr_acc', 'te_nll', 'te_acc', 'time']
+            columns = ['ep', 'lr', 'tr_loss', 'tr_acc',
+                       'te_nll_{}'.format(feature_from), 'te_acc_{}'.format(feature_from),
+                       'te_nll_{}'.format(feature_to), 'te_acc_{}'.format(feature_to), 'time']
 
-            utils.save_checkpoint(
-                args.dir,
+            curve_utils.save_checkpoint(
+                MODE_CONNECTIVITY_FOLDER,
                 start_epoch - 1,
                 model_state=model.state_dict(),
                 optimizer_state=optimizer.state_dict()
             )
 
-            has_bn = utils.check_bn(model)
-            test_res = {'loss': None, 'accuracy': None, 'nll': None}
-            for epoch in range(start_epoch, args.epochs + 1):
+            has_bn = curve_utils.check_bn(model)
+            test_res_from = {'loss': None, 'accuracy': None, 'nll': None}
+            test_res_to = {'loss': None, 'accuracy': None, 'nll': None}
+            for epoch in range(start_epoch, 200 + 1):
                 time_ep = time.time()
 
                 lr = learning_rate_schedule(args.lr, epoch, args.epochs)
-                utils.adjust_learning_rate(optimizer, lr)
+                curve_utils.adjust_learning_rate(optimizer, lr)
 
-                train_res = utils.train(loaders['train'], model, optimizer, criterion, regularizer)
-                if args.curve is None or not has_bn:
-                    test_res = utils.test(loaders['test'], model, criterion, regularizer)
+                train_res = curve_utils.train(trainloader_diag, model, optimizer, criterion, regularizer)
+                if not has_bn:
+                    test_res_from = curve_utils.test(training_data_from, model, criterion, regularizer)
+                    test_res_to = curve_utils.test(training_data_to, model, criterion, regularizer)
 
-                if epoch % args.save_freq == 0:
-                    utils.save_checkpoint(
-                        args.dir,
+                if epoch % 50 == 0:
+                    curve_utils.save_checkpoint(
+                        MODE_CONNECTIVITY_FOLDER,
                         epoch,
                         model_state=model.state_dict(),
                         optimizer_state=optimizer.state_dict()
                     )
 
                 time_ep = time.time() - time_ep
-                values = [epoch, lr, train_res['loss'], train_res['accuracy'], test_res['nll'],
-                          test_res['accuracy'], time_ep]
+                values = [epoch, lr,
+                          train_res['loss'], train_res['accuracy'],
+                          test_res_from['nll'], test_res_from['accuracy'],
+                          test_res_to['nll'], test_res_to['accuracy'], time_ep]
 
                 table = tabulate.tabulate([values], columns, tablefmt='simple', floatfmt='9.4f')
                 if epoch % 40 == 1 or epoch == start_epoch:
@@ -283,7 +278,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                 print(table)
 
             if args.epochs % args.save_freq != 0:
-                utils.save_checkpoint(
+                curves.save_checkpoint(
                     args.dir,
                     args.epochs,
                     model_state=model.state_dict(),

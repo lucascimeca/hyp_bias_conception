@@ -131,7 +131,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             print('==> Preparing dataset dsprites ')
             round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-                number_of_samples=10000,
+                number_of_samples=5000,
                 features_variants=experiments[exp_key],
                 resize=resize,
                 train_split=1.,
@@ -165,12 +165,13 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     num_classes=num_classes,
                     depth=args.depth,
                     no_of_channels=no_of_channels)
-                optimizer = optim.Adadelta(model.parameters())
+                optimizer = optim.Adam(model.parameters())
             elif args.arch.endswith('convnet'):
                 model = ConvNet(
                     num_classes=num_classes,
                     no_of_channels=no_of_channels)
-                optimizer = optim.Adam(model.parameters())
+                optimizer = optim.Adam(model.parameters(),
+                                       weight_decay=1e-3)
             elif args.arch.endswith('ffnet'):
                 model = FFNet(
                     num_classes=num_classes,
@@ -181,7 +182,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
                     norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes, in_chans=no_of_channels)
                 optimizer = optim.SGD(model.parameters(),
-                                      lr=3e-2,
+                                      lr=5e-3,
                                       momentum=0.9,
                                       weight_decay=1e-4)
             else:
@@ -226,10 +227,12 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             best_accuracies = {}  # best test accuracy
             best_loss = None
             best_acc = None
+            best_epoch = None
             start_time = time.time()
             patience_cnt = 0
             weight_states_to_save = None
             zero_loss = False
+            found_candidate = False
             for epoch in range(args.epochs):
 
                 # adjust_learning_rate(optimizer, epoch, args)
@@ -271,38 +274,31 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                       format(epoch, losses.avg, accuracies.avg))
 
                 # if any task improved then save
-                if (best_loss is None or losses.avg < best_loss) \
-                        and losses.avg < 0.05 and accuracies.avg == 100.0:
+                if best_loss is None or losses.avg < best_loss:
                     print("---- potential local minima at epoch: {}".format(epoch))
                     best_loss = losses.avg
                     best_acc = accuracies.avg
-                    patience_cnt = 0
+                    best_epoch = epoch
                     weight_states_to_save = copy.deepcopy(model.state_dict())
+                    if accuracies.avg == 100.0:
+                        patience_cnt = 0
+                        found_candidate = True
 
-                elif best_loss is not None and losses.avg >= best_loss:
-                        patience_cnt += 1
+                if losses.avg >= best_loss and found_candidate:
+                    patience_cnt += 1
 
                 if patience_cnt >= args.patience or epoch == args.epochs-1:
-                    if epoch == args.epochs-1:
-                        best_loss = losses.avg
-                        best_acc = accuracies.avg
-                        weight_states_to_save = copy.deepcopy(model.state_dict())
-                        epoch += args.patience
                     torch.save(weight_states_to_save, '{}weights-{}-{}-{}---loss_{:.4f}-acc_{}.pth'.format(
                         logs_folder,
                         exp_key,
                         sample_no,
-                        epoch - args.patience,
+                        best_epoch,
                         best_loss,
                         int(best_acc)
                     ))
                     break
 
             sample_no += 1
-
-            # --- here do round two...
-            # for round_no, feature in round_two_datasets.keys():
-            #     pass
 
 
 if __name__ == '__main__':
@@ -317,7 +313,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=5000, type=int, metavar='N',
+    parser.add_argument('--epochs', default=10000, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -387,10 +383,10 @@ if __name__ == '__main__':
         )
     elif 'face' in args.dataset:
         experiments = {
-            # "age_augmentation": ('age', 'gender', 'ethnicity'),
+            "age_augmentation": ('age', 'gender', 'ethnicity'),
             "gender_augmentation": ('age', 'gender', 'ethnicity'),
-            # "ethnicity_augmentation": ('age', 'gender', 'ethnicity'),
-            # "diagonal": ('age', 'gender', 'ethnicity')
+            "ethnicity_augmentation": ('age', 'gender', 'ethnicity'),
+            "diagonal": ('age', 'gender', 'ethnicity')
         }
         dsc = UTKFaceCreator(
             data_path='./data/',
@@ -403,7 +399,7 @@ if __name__ == '__main__':
         run_experiment(args,
                        experiments=experiments,
                        dsc=dsc,
-                       samples=4,
+                       samples=1,
                        scope=locals())
         print("done")
 

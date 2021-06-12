@@ -7,7 +7,7 @@ NSML COMMANDS
 
 # --- feature combinations
 - nsml run -d BWDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
-- nsml run -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 - nsml run -d MultiDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 - nsml run -d MultiColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 - nsml run -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
@@ -15,19 +15,28 @@ NSML COMMANDS
 
 
 # --- solution state preturbation save (multiple experiments with different sets of feature cues)
-- nsml run -e main_perturbation.py -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_perturbation.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 # --- solution state augmentaion save (multiple experiments with same set of feature cues but augmentations by different cues each time)
-- nsml run -e main_augmentation.py -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_augmentation.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_augmentation.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 
 # --- observe loss around local minima solutions
-- nsml run -e main_surf_test.py -d ColorDSprites --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_surf_test.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_surf_test.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+
+
+- nsml run -e main_sphere_test.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_sphere_test.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+
 
 # to retrieve tflogs 							  
-- nsml download KR95157/ColorDSprites/26 Downloads -s /app/runs.zip
+- nsml download KR95157/ColorDSpritesPruned/26 Downloads -s /app/runs.zip
+- nsml download KR95157/UTKFace/26 Downloads -s /app/runs.zip
+
 
 # to push dataset
-nsml dataset push ColorDSprites data/
+nsml dataset push ColorDSpritesPruned data/
 
 
