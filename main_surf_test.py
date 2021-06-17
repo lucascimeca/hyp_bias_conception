@@ -81,6 +81,15 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
     for sample_file in files:
         global best_acc, global_step
 
+        # Random seed
+        if args.manualSeed is None:
+            args.manualSeed = random.randint(1, 10000)
+        random.seed(args.manualSeed)
+        torch.manual_seed(args.manualSeed)
+        if use_cuda:
+            torch.cuda.manual_seed_all(args.manualSeed)
+
+
         fs = sample_file.split('-')
         arch = fs[0]
         exp_key = fs[1]
@@ -116,6 +125,8 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
                                       shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
 
+        args.xmin, args.xmax, args.xnum = -1., 1., 51
+        args.ymin, args.ymax, args.ynum = -1., 1., 51
 
         #  -------------- MODEL --------------------------
         print("==> creating model '{}'".format(args.arch))
@@ -129,8 +140,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 num_classes=num_classes,
                 depth=args.depth,
                 no_of_channels=no_of_channels)
-            args.xmin, args.xmax, args.xnum = -1., 1., 51
-            args.ymin, args.ymax, args.ynum = -1., 1., 51
         elif 'convnet' in args.arch:
             model = ConvNet(
                 num_classes=num_classes,
@@ -144,8 +153,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
                 norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes,
                 in_chans=no_of_channels)
-            args.xmin, args.xmax, args.xnum = -5., 5., 51
-            args.ymin, args.ymax, args.ynum = -5., 5., 51
         else:
             raise NotImplementedError()
 
@@ -379,18 +386,6 @@ if __name__ == '__main__':
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0
 
-    # Random seed
-    if args.manualSeed is None:
-        args.manualSeed = random.randint(1, 10000)
-    random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.manualSeed)
-
-    # if args.mpi:
-    # comm = mpi.setup_MPI()
-    # rank, nproc = comm.Get_rank(), comm.Get_size()
-    # else:
     comm, rank, nproc = None, 0, 1
 
     # in case of multiple GPUs per node, set the GPU to use for each rank

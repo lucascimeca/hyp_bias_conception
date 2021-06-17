@@ -94,7 +94,7 @@ class FeatureDataset(Dataset):
         self.indices_by_label = {}
         data_indeces = np.array(range(len(self.indeces)))
         for lv in range(self.no_of_feature_lvs):
-            self.indices_by_label[lv] = data_indeces[self.labels[self.indeces] == lv]
+            self.indices_by_label[lv] = np.array(sorted(data_indeces[self.labels[self.indeces] == lv]))
 
     def _subsample(self, number_of_samples):
         balance_mark = int(number_of_samples/self.no_of_feature_lvs)
@@ -381,7 +381,7 @@ class FeatureCombinationCreator:
                 print("cutoffs for {} found at {}".format(feature, lvs[1:]))
                 print("percents for {} found at {}".format(feature, percents))
 
-            # if it's a categorical, then just pick two
+            # if it's a categorical, then just pick them linearly
             else:
                 self.task_dict[feature] = [round(x) for x in
                                            np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
@@ -443,7 +443,7 @@ class FeatureCombinationCreator:
         test_size = diag_indeces.shape[0] - train_size - val_size
 
         # ----------  create round one dataset ----------
-
+        torch.manual_seed(torch.initial_seed())
         ro_train_idx, ro_valid_idx, ro_test_idx = torch.utils.data.random_split(
             diag_indeces, [train_size, val_size, test_size]
         )
@@ -459,8 +459,8 @@ class FeatureCombinationCreator:
                 latent_to_idx=self.latent_to_idx,
                 latent_type = self.latent_type,
                 task_dict=self.task_dict,
-                feature=self.feature_variants[0],  # doesn't matter within diag indeces
                 number_of_samples=number_of_samples,
+                feature=self.feature_variants[0],  # doesn't matter within diag indeces
             ),
             'valid': FeatureDataset(
                 indeces=ro_valid_idx,
@@ -499,6 +499,7 @@ class FeatureCombinationCreator:
             train_size = round(train_split * offdiag_indeces[feature].shape[0])
             val_size = round(valid_split * offdiag_indeces[feature].shape[0])
             test_size = offdiag_indeces[feature].shape[0] - train_size - val_size
+            torch.manual_seed(torch.initial_seed())
             rt_train_idx, rt_valid_idx, rt_test_idx = torch.utils.data.random_split(
                 offdiag_indeces[feature], [train_size, val_size, test_size]
             )

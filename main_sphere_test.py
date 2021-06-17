@@ -87,6 +87,15 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
     for sample_file in files:
         global best_acc, global_step
 
+        random.seed(args.manualSeed)
+        np.random.seed(args.manualSeed)
+        torch.manual_seed(args.manualSeed)
+        torch.cuda.manual_seed(args.manualSeed)
+        torch.cuda.manual_seed_all(args.manualSeed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+
+
         fs = sample_file.split('-')
         arch = fs[0]
         exp_key = fs[1]
@@ -166,7 +175,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         base_loss, base_acc = test(trainloader, model, criterion, save=False)
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
-
+        continue
         # continue
         spherical_losses = []
         spherical_accs = []
@@ -311,7 +320,7 @@ if __name__ == '__main__':
     parser.add_argument('--r_levels', default=50, type=int, help='max radius')
     parser.add_argument('--samples_no', default=300, type=int, help='number of samples per radius')
     # Miscs
-    parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
+    parser.add_argument('--manualSeed', default=12345, type=int, help='manual seed')
     # nsml
     parser.add_argument('--pause', default=0, type=int)
     parser.add_argument('--mode', default='train', type=str)
@@ -321,14 +330,6 @@ if __name__ == '__main__':
 
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0
-
-    # Random seed
-    if args.manualSeed is None:
-        args.manualSeed = random.randint(1, 10000)
-    random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.manualSeed)
 
     # experiments
     if 'color' in args.dataset:

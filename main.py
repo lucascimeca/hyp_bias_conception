@@ -64,6 +64,14 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         while sample_no < samples:
             global best_acc, global_step
 
+            # Random seed
+            if args.manualSeed is None:
+                args.manualSeed = random.randint(1, 10000)
+            random.seed(args.manualSeed)
+            torch.manual_seed(args.manualSeed)
+            if use_cuda:
+                torch.cuda.manual_seed_all(args.manualSeed)
+
             # Data
             resize = None
             if 'face' in args.dataset:
@@ -99,7 +107,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             testloaders['round_one'] = data.DataLoader(round_one_dataset['train'], batch_size=args.test_batch,
                                                        shuffle=True, num_workers=args.workers,
                                                        worker_init_fn=seed_worker)
-
 
 
             # Model
@@ -346,7 +353,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=120, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -392,14 +399,6 @@ if __name__ == '__main__':
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0
 
-    # Random seed
-    if args.manualSeed is None:
-        args.manualSeed = random.randint(1, 10000)
-    random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.manualSeed)
-
     if 'bw' in args.dataset:
         combinations = itertools.combinations(['shape', 'scale', 'orientation', 'x_position'],
                                               3)
@@ -430,8 +429,9 @@ if __name__ == '__main__':
         experiments = {
             "shape_scale_orientation_color": ('shape', 'scale', 'orientation', 'color'),
             "shape_scale_color": ('shape', 'scale', 'color'),
-            "shape_orientation_color": ('scale', 'orientation', 'color'),
-            "scale_color": ('scale', 'color'),
+            "shape_scale_orientation": ('shape', 'scale', 'orientation'),
+            "scale_orientation_color": ('scale', 'orientation', 'color'),
+            "shape_orientation_color": ('shape', 'orientation', 'color'),
         }
         dsc = ColorDSpritesCreator(
             data_path='./data/',

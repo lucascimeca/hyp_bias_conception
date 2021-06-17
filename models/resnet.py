@@ -107,6 +107,9 @@ class ResNet(nn.Module):
 
         block = Bottleneck if depth >= 44 else BasicBlock
 
+        self.depth = depth
+        self.num_classes = num_classes
+
         self.inplanes = 16
         self.conv1 = nn.Conv2d(no_of_channels, 16, kernel_size=3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
@@ -174,7 +177,7 @@ def conv3x3Curve(in_planes, out_planes, fix_points, stride=1):
 class BasicBlockCurve(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, fix_points, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, fix_points=None):
         super(BasicBlockCurve, self).__init__()
         self.conv1 = conv3x3Curve(inplanes, planes, fix_points, stride)
         self.bn1 = curves.BatchNorm2d(planes, fix_points=fix_points)
@@ -189,7 +192,7 @@ class BasicBlockCurve(nn.Module):
         # first block
         out = self.conv1(x, coeffs_t)
         out = self.bn1(out, coeffs_t)
-        out = self.relu(out, coeffs_t)
+        out = self.relu(out)
         # second block
         out = self.conv2(out, coeffs_t)
         out = self.bn2(out, coeffs_t)
@@ -252,6 +255,19 @@ class BottleneckCurve(nn.Module):
 
 
 
+
+class DownSample(nn.Module):
+    def __init__(self, inplanes, planes, expansion, fix_points=None, kernel_size=1, stride=1, bias=False):
+        super(DownSample, self).__init__()
+        self.conv = curves.Conv2d(inplanes, planes * expansion, fix_points=fix_points, kernel_size=kernel_size, stride=stride, bias=bias)
+        self.batch_norm = curves.BatchNorm2d(planes * expansion, fix_points=fix_points)
+
+    def forward(self, x, coeffs_t):
+        x = self.conv(x, coeffs_t)
+        x = self.batch_norm(x, coeffs_t)
+        return x
+
+
 class ResNetCurve(nn.Module):
     def __init__(self, depth, fix_points, num_classes=1000, no_of_channels=1):
         super(ResNetCurve, self).__init__()
@@ -283,10 +299,7 @@ class ResNetCurve(nn.Module):
     def _make_layer(self, block, planes, blocks, fix_points, stride=1):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                curves.Conv2d(self.inplanes, planes * block.expansion, fix_points=fix_points, kernel_size=1, stride=stride, bias=False),
-                curves.BatchNorm2d(planes * block.expansion, fix_points=fix_points),
-            )
+            downsample = DownSample(self.inplanes, planes, block.expansion, fix_points=fix_points, kernel_size=1, stride=stride, bias=False)
 
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample, fix_points=fix_points))
@@ -300,11 +313,11 @@ class ResNetCurve(nn.Module):
     def forward(self, x, coeffs_t):
         x = self.conv1(x, coeffs_t)
         x = self.bn1(x, coeffs_t)
-        x = self.relu(x, coeffs_t)
+        x = self.relu(x)
 
         for block in self.layer1:
             x = block(x, coeffs_t)  # 32x32
-        for block in self.layer12:
+        for block in self.layer2:
             x = block(x, coeffs_t)  # 16x16
         for block in self.layer3:
             x = block(x, coeffs_t)  # 8x8

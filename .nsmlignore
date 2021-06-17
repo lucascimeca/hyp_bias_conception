@@ -6,4 +6,5 @@ runs/
 results/
 Downloads/
 models/pretrained/direction_files/
+models/pretrained/mode_files/
 *.zip

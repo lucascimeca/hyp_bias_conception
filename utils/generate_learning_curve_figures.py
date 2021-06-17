@@ -132,9 +132,9 @@ def plot_all(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_para
 
 
 if __name__ == "__main__":
-    PLOT_TRAIN_LOSS = True
-    PLOT_TRAIN_ACC = False
-    PLOT_VALID_ACC = False
+    PLOT_TRAIN_LOSS = False
+    PLOT_TRAIN_ACC = True
+    PLOT_VALID_ACC = True
 
     data_dict = convert_tb_data(f"{TENSORBOARD_FOLDER}", apply_row_limits=False)
 
@@ -192,8 +192,8 @@ if __name__ == "__main__":
                             title='{} - Test Accuracy'.format(experiment_name),
                             x_label='Epoch',
                             y_label='Accuracy',
-                            smoothing_parameter=0.0,
+                            # smoothing_parameter=0.0,
                             type='acc',
-                            cap=30,
+                            cap=120,
                             ylim=(-5, 110)
                             )

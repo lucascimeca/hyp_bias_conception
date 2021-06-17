@@ -124,6 +124,14 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             global best_acc, global_step
 
+            random.seed(args.manualSeed)
+            np.random.seed(args.manualSeed)
+            torch.manual_seed(args.manualSeed)
+            torch.cuda.manual_seed(args.manualSeed)
+            torch.cuda.manual_seed_all(args.manualSeed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+
             #  -------------- DATA --------------------------
             resize = None
             if 'face' in args.dataset:
@@ -247,14 +255,11 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
                     # compute output
                     outputs = model(inputs)
-                    try:
-                        loss = criterion(outputs, targets.squeeze())
-                        # measure accuracy and record loss
-                        acc, = accuracy(outputs.data, targets.data)
-                        losses.update(loss.data.item(), inputs.size(0))
-                        accuracies.update(acc.item(), inputs.size(0))
-                    except:
-                        a = 1
+                    loss = criterion(outputs, targets.squeeze())
+                    # measure accuracy and record loss
+                    acc, = accuracy(outputs.data, targets.data)
+                    losses.update(loss.data.item(), inputs.size(0))
+                    accuracies.update(acc.item(), inputs.size(0))
 
                     # compute gradient and do SGD step
                     optimizer.zero_grad()
@@ -270,14 +275,17 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                         train__loss=loss.data.item()
                     )
 
-                print('Epoch {}: train_loss={}, train_acc={}'.
-                      format(epoch, losses.avg, accuracies.avg))
-
                 # if any task improved then save
-                if best_loss is None or losses.avg < best_loss:
+
+                # compute test (train) loss - with current (stationary) weights (no Gradient Descent)
+                test_loss, test_acc = test(trainloader, model, criterion, save=False)
+
+                print('Epoch {}: train_loss={}, train_acc={}'. format(epoch, losses.avg, accuracies.avg))
+                print('Epoch {}: test_loss={}, test_acc={}'. format(epoch, test_loss, test_acc))
+                if best_loss is None or test_loss < best_loss:
                     print("---- potential local minima at epoch: {}".format(epoch))
-                    best_loss = losses.avg
-                    best_acc = accuracies.avg
+                    best_loss = test_loss
+                    best_acc = test_acc
                     best_epoch = epoch
                     weight_states_to_save = copy.deepcopy(model.state_dict())
                     if accuracies.avg == 100.0:
@@ -311,9 +319,9 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi, multicolor and face supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=10000, type=int, metavar='N',
+    parser.add_argument('--epochs', default=5000, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -331,7 +339,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -340,7 +348,7 @@ if __name__ == '__main__':
     parser.add_argument('--growthRate', type=int, default=12, help='Growth rate for DenseNet.')
     parser.add_argument('--compressionRate', type=int, default=2, help='Compression Rate (theta) for DenseNet.')
     # Miscs
-    parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
+    parser.add_argument('--manualSeed', default=12345, type=int, help='manual seed')
     # Random Erasing
     parser.add_argument('--prob', default=0, type=float, help='Random Erasing probability')
     parser.add_argument('--sh', default=0.4, type=float, help='max erasing area')
@@ -359,14 +367,6 @@ if __name__ == '__main__':
 
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0
-
-    # Random seed
-    if args.manualSeed is None:
-        args.manualSeed = random.randint(1, 10000)
-    random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.manualSeed)
 
     if 'color' in args.dataset:
         # experiments

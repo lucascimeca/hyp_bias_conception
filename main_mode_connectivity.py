@@ -35,6 +35,7 @@ from utils.misc.simple_io import *
 from functools import partial
 
 NSML = True
+SEED = 12345
 TENSORBOARD_FOLDER = "./runs/"
 DIRECTION_FILES_FOLDER = "./models/pretrained/direction_files/"
 DIRECTION_PRETRAINED_FOLDER = "./models/pretrained/"
@@ -78,15 +79,22 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         sample_no_from = fs_from[2]
         feature_from = exp_key_from.split("_")[0]
 
-        samples_to = [sample for sample in files if exp_key not in sample]
+        samples_to = [sample for sample in files if exp_key_from not in sample]
 
         for sample_to in samples_to:
+
+            random.seed(args.manualSeed)
+            np.random.seed(args.manualSeed)
+            torch.manual_seed(args.manualSeed)
+            torch.cuda.manual_seed(args.manualSeed)
+            torch.cuda.manual_seed_all(args.manualSeed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
 
             fs_to = sample_from.split('-')
             exp_key_to = fs_to[1]
             sample_no_to = fs_to[2]
             feature_to = exp_key_to.split("_")[0]
-
 
             #  -------------- DATA --------------------------
             resize = None
@@ -95,7 +103,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
 
             print('==> Preparing dataset dsprites ')
             round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-                number_of_samples=5000,
+                number_of_samples=1000,
                 features_variants=experiments[exp_key_from],
                 resize=resize,
                 train_split=1.,
@@ -106,10 +114,11 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
 
             # create train dataset for main diagonal -- round one
             training_data = round_one_dataset['train']
-            training_data_to = copy.deepcopy(training_data)
-            training_data_from = copy.deepcopy(training_data)
 
+            training_data_to = copy.deepcopy(training_data)
             training_data_to.merge_new_dataset(round_two_datasets[feature_to]['train'])
+
+            training_data_from = copy.deepcopy(training_data)
             training_data_from.merge_new_dataset(round_two_datasets[feature_from]['train'])
 
             print("Data diag: {}".format(len(training_data)))
@@ -118,12 +127,11 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
 
             # create train dataset for main diagonal -- round one
             trainloader_diag = data.DataLoader(training_data, batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+                                               shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
             trainloader_from = data.DataLoader(training_data_to, batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+                                               shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
             trainloader_to = data.DataLoader(training_data_from, batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
+                                             shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
 
             # Model
             print("==> creating model '{}'".format(args.arch))
@@ -139,35 +147,38 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                     depth=args.depth,
                     no_of_channels=no_of_channels)
                 architecture.base = base_model
-                optimizer = optim.Adadelta(base_model.parameters())
-            elif 'convnet' in args.arch:
-                base_model = ConvNet(
-                    num_classes=num_classes,
-                    no_of_channels=no_of_channels)
-                optimizer = optim.Adadelta(base_model.parameters())
-            elif 'ffnet' in args.arch:
-                base_model = FFNet(
-                    num_classes=num_classes,
-                    no_of_channels=no_of_channels)
+                architecture_kwargs = {
+                    'depth': args.depth,
+                    'no_of_channels': no_of_channels
+                }
             elif 'vit' in args.arch:
+                architecture = ResnetWithCurve
                 base_model = VisionTransformer(
                     img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
                     norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes,
                     in_chans=no_of_channels)
-                optimizer = optim.SGD(model.parameters(),
-                                      lr=5e-3,
-                                      momentum=0.9,
-                                      weight_decay=1e-4)
+                architecture.base = base_model
+                architecture_kwargs = {
+                    'img_size': 64,
+                    'patch_size':  8,
+                    'embed_dim':  192,
+                    'depth':  12,
+                    'num_heads':  3,
+                    'mlp_ratio':  4,
+                    'qkv_bias':  True,
+                    'norm_layer':  partial(nn.LayerNorm, eps=1e-6),
+                    'num_classes':  num_classes,
+                    'in_chans':  no_of_channels
+                }
             else:
                 raise NotImplementedError()
 
             cudnn.benchmark = True
-            print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
+            print('    Total params: %.2fM' % (sum(p.numel() for p in base_model.parameters()) / 1000000.0))
 
             nsml.bind(model=base_model)
 
             criterion = nn.CrossEntropyLoss()
-
 
             os.makedirs(MODE_CONNECTIVITY_FOLDER, exist_ok=True)
             with open(os.path.join(MODE_CONNECTIVITY_FOLDER, 'command.sh'), 'w') as f:
@@ -175,10 +186,12 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                 f.write('\n')
 
             torch.backends.cudnn.benchmark = True
-            torch.manual_seed(args.seed)
-            torch.cuda.manual_seed(args.seed)
+            torch.manual_seed(SEED)
+            torch.cuda.manual_seed(SEED)
 
-
+            args.num_bends = 3
+            args.fix_start = True
+            args.fix_end = True
             curve = curves.Bezier
             model = curves.CurveNet(
                 num_classes,
@@ -187,7 +200,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                 args.num_bends,
                 args.fix_start,
                 args.fix_end,
-                architecture_kwargs=base_model.kwargs,
+                architecture_kwargs=architecture_kwargs,
             )
 
 
@@ -198,7 +211,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                 state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
                 base_model.load_state_dict(state_dict_rex)
 
-                print('Loading {} as point {}' % (smpl, k))
+                print('Loading {} as point {}'.format(smpl, k))
                 model.import_base_parameters(base_model, k)
             if args.init_linear:
                 print('Linear initialization.')
@@ -217,7 +230,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                     factor = 0.01
                 return factor * base_lr
 
-            regularizer = curves.l2_regularizer(args.wd)
+            regularizer = curve_utils.l2_regularizer(args.weight_decay)
 
             if 'resnet' in args.arch:
                 optimizer = optim.Adadelta(model.parameters())
@@ -226,6 +239,8 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                                       lr=5e-3,
                                       momentum=0.9,
                                       weight_decay=1e-4)
+            else:
+                raise NotImplementedError
 
 
             start_epoch = 1
@@ -252,8 +267,8 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
 
                 train_res = curve_utils.train(trainloader_diag, model, optimizer, criterion, regularizer)
                 if not has_bn:
-                    test_res_from = curve_utils.test(training_data_from, model, criterion, regularizer)
-                    test_res_to = curve_utils.test(training_data_to, model, criterion, regularizer)
+                    test_res_from = curve_utils.test(trainloader_from, model, criterion, regularizer)
+                    test_res_to = curve_utils.test(trainloader_to, model, criterion, regularizer)
 
                 if epoch % 50 == 0:
                     curve_utils.save_checkpoint(
@@ -284,76 +299,6 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                     model_state=model.state_dict(),
                     optimizer_state=optimizer.state_dict()
                 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            base_loss, base_acc = test(trainloader, model, criterion, save=False)
-            print('\n\n {} -----  BASE LOSS={:.3f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
-            print(sample_file)
-
-            # continue
-
-            spherical_losses = []
-            spherical_accs = []
-            local_rs = []
-
-            weights = copy.deepcopy(net_plotter.get_weights(model))  # initial parameters
-
-            step = args.max_r/args.r_levels
-            for r in torch.arange(step, args.max_r+step, step):
-
-                changes = []
-                for p in model.parameters():
-                    random_params = torch.randn((args.samples_no,) + p.shape)
-                    changes.append(random_params)
-
-                random_params = torch.cat([change.view(change.shape[0], -1) for change in changes], dim=1)
-                norm = torch.norm(random_params, dim=0)
-                random_params /= norm
-                random_params *= r
-
-                losses = []
-                accs = []
-                for si in range(args.samples_no):
-                    start_time = time.time()
-
-                    w_idx = 0
-                    for (p, w) in zip(model.parameters(), weights):
-                        n_of_weights = torch.prod(torch.tensor(p.shape))
-                        p.data = w + random_params[si, w_idx:w_idx+n_of_weights].view(p.shape)
-                        w_idx = n_of_weights
-
-                    loss, acc = test(trainloader, model, criterion, save=False)
-                    losses.append(loss-base_loss)
-                    accs.append(acc)
-
-                    cnt += 1
-
-                    print('{:.3f}% -- r={:.2f}, Loss Change={:.2f}, Acc={:.2f}... time elapsed:{:.2f} '
-                          .format(100*cnt/tot_exp_no, r, loss-base_loss, acc, time.time() - start_time))
-
-                spherical_losses.append(losses)
-                spherical_accs.append(accs)
-                local_rs.append(r)
-
-                print('\nr={}, Avg. Loss Change={:.3f}, Avg. Acc={:.2f}\n'.format(
-                    r, np.mean(spherical_losses[-1]), np.mean(spherical_accs[-1])))
-
-            np.savez_compressed(DIRECTION_FILES_FOLDER + '{}_{}-sphere_loss'.format(exp_key, sample_no),
-                                spherical_losses=spherical_losses,
-                                spherical_accs=spherical_accs,
-                                local_rs=local_rs)
 
 
 def test(testloader, model, criterion, save=False, folder=''):
@@ -417,7 +362,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -425,7 +370,7 @@ if __name__ == '__main__':
                         help='train batchsize')
     parser.add_argument('--test-batch', default=256, type=int, metavar='N',
                         help='test batchsize')
-    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--drop', '--dropout', default=0, type=float,
                         metavar='Dropout', help='Dropout ratio')
@@ -446,25 +391,21 @@ if __name__ == '__main__':
     parser.add_argument('--max_r', default=1., type=int, help='max radiuses')
     parser.add_argument('--r_levels', default=50, type=int, help='max radius')
     parser.add_argument('--samples_no', default=300, type=int, help='number of samples per radius')
+    parser.add_argument('--manualSeed', default=12345, type=int, help='manual seed')
     # nsml
     parser.add_argument('--pause', default=0, type=int)
     parser.add_argument('--mode', default='train', type=str)
+    # for mode connectivity stuff
+
+    parser.set_defaults(init_linear=True)
+    parser.add_argument('--init_linear_off', dest='init_linear', action='store_false',
+                        help='turns off linear initialization of intermediate points (default: on)')
 
     args = parser.parse_args()
     state = {k: v for k, v in args._get_kwargs()}
 
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0
-
-    # Random seed
-    args.manualSeed = 123
-    random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.manualSeed)
-
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.manualSeed)
 
     # experiments
     if 'color' in args.dataset:
@@ -494,19 +435,19 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError(args.dataset)
 
-    try:
-        run_experiment(args,
-                       experiments=experiments,
-                       dsc=dsc,
-                       scope=locals())
-        print("done")
+    # try:
+    run_experiment(args,
+                   experiments=experiments,
+                   dsc=dsc,
+                   scope=locals())
+    print("done")
 
-    except Exception as e:
-        print("Error: {}".format(e))
-        raise e
+    # except Exception as e:
+    #     print("Error: {}".format(e))
+    #     raise e
 
-    finally:
-        print("saving zip...")
-        zipfolder("runs", DIRECTION_FILES_FOLDER)
-        traceback.print_exc()
-        sys.exit()
+    # finally:
+    #     print("saving zip...")
+    #     zipfolder("runs", MODE_CONNECTIVITY_FOLDER)
+    #     traceback.print_exc()
+    #     sys.exit()

@@ -84,7 +84,6 @@ class WideResNetBase(nn.Module):
         return out
 
 
-
 class WideBasicCurve(nn.Module):
     def __init__(self, in_planes, planes, dropout_rate, fix_points, stride=1):
         super(WideBasicCurve, self).__init__()
@@ -108,6 +107,7 @@ class WideBasicCurve(nn.Module):
         out += residual
 
         return out
+
 
 class WideResNetCurve(nn.Module):
     def __init__(self, num_classes, fix_points, depth=28, widen_factor=10, dropout_rate=0.):
