@@ -77,14 +77,14 @@ def test(test_loader, model, criterion, regularizer=None, **kwargs):
     nll_sum = 0.0
     correct = 0.0
 
-    model.eval()
+    model.train()
 
-    for input, target in test_loader:
+    for _, input, target in test_loader:
         input = input.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
 
         output = model(input, **kwargs)
-        nll = criterion(output, target)
+        nll = criterion(output, target.squeeze())
         loss = nll.clone()
         if regularizer is not None:
             loss += regularizer(model)
@@ -101,9 +101,8 @@ def test(test_loader, model, criterion, regularizer=None, **kwargs):
     }
 
 
-
 def predictions(test_loader, model, **kwargs):
-    model.eval()
+    model.train()
     preds = []
     targets = []
     for input, target in test_loader:
@@ -154,7 +153,7 @@ def update_bn(loader, model, **kwargs):
     model.apply(reset_bn)
     model.apply(lambda module: _get_momenta(module, momenta))
     num_samples = 0
-    for input, _ in loader:
+    for _, input, _ in loader:
         input = input.cuda(non_blocking=True)
         batch_size = input.data.size(0)
 

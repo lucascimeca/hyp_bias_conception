@@ -7,8 +7,16 @@ import torch.nn.functional as F
 
 import data
 import models
-import curves
-import utils
+import utils.mode_connectivity.curves as curves
+import utils.mode_connectivity.utils as curves_utils
+
+NSML = True
+SEED = 12345
+TENSORBOARD_FOLDER = "./runs/"
+DIRECTION_FILES_FOLDER = "./models/pretrained/direction_files/"
+DIRECTION_PRETRAINED_FOLDER = "./models/pretrained/"
+MODE_CONNECTIVITY_FOLDER = "./models/pretrained/mode_files/"
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 parser = argparse.ArgumentParser(description='DNN curve evaluation')

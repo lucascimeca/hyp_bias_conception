@@ -290,7 +290,7 @@ def test(testloader, model, criterion, save=False, folder=''):
     losses = AverageMeter()
     accuracies = AverageMeter()
     # switch to evaluate mode
-    model.eval()
+    model.train()
     if save:
         outputs_to_save = []
         targets_to_save = []

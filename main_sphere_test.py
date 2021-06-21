@@ -95,7 +95,6 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-
         fs = sample_file.split('-')
         arch = fs[0]
         exp_key = fs[1]
@@ -119,7 +118,7 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         num_classes = dsc.no_of_feature_lvs
 
         # create train dataset for main diagonal -- round one
-        training_data = round_one_dataset['train']
+        training_data = copy.deepcopy(round_one_dataset['train'])
 
         # augment with offdiagonal if necessary
         if 'augmentation' in exp_key:
@@ -169,14 +168,13 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         cudnn.benchmark = True
         print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
 
-
         criterion = nn.CrossEntropyLoss()
 
         base_loss, base_acc = test(trainloader, model, criterion, save=False)
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
+
         continue
-        # continue
         spherical_losses = []
         spherical_accs = []
         local_rs = []
@@ -234,7 +232,7 @@ def test(testloader, model, criterion, save=False, folder=''):
     losses = AverageMeter()
     accuracies = AverageMeter()
     # switch to evaluate mode
-    model.eval()
+    model.train()
     if save:
         outputs_to_save = []
         targets_to_save = []
@@ -310,7 +308,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

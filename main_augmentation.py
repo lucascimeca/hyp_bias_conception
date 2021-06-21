@@ -34,7 +34,6 @@ from functools import partial
 NSML = True
 TENSORBOARD_FOLDER = "./runs/"
 
-
 global_step = 0
 
 
@@ -45,11 +44,11 @@ def seed_worker(worker_id):
 
 
 def test(testloader, model, criterion, save=False, folder=''):
-    global best_acc, global_step
+    global global_step
     losses = AverageMeter()
     accuracies = AverageMeter()
     # switch to evaluate mode
-    model.eval()
+    model.train()
     if save:
         outputs_to_save = []
         targets_to_save = []
@@ -122,7 +121,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         sample_no = 0
         while sample_no < samples:
 
-            global best_acc, global_step
+            global global_step
 
             random.seed(args.manualSeed)
             np.random.seed(args.manualSeed)
@@ -149,7 +148,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             num_classes = dsc.no_of_feature_lvs
 
             # create train dataset for main diagonal -- round one
-            training_data = round_one_dataset['train']
+            training_data = copy.deepcopy(round_one_dataset['train'])
 
             # augment with offdiagonal if necessary
             if 'augmentation' in exp_key:
@@ -321,7 +320,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=5000, type=int, metavar='N',
+    parser.add_argument('--epochs', default=3, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -339,7 +338,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

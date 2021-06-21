@@ -7,8 +7,8 @@ import torch.nn.functional as F
 
 import data
 import models
-import curves
-import utils
+import utils.mode_connectivity.curves as curves
+import utils.mode_connectivity.utils as curves_utils
 
 parser = argparse.ArgumentParser(description='Computes values for plane visualization')
 parser.add_argument('--dir', type=str, default='/tmp/plane', metavar='DIR',
@@ -86,7 +86,7 @@ checkpoint = torch.load(args.ckpt)
 curve_model.load_state_dict(checkpoint['model_state'])
 
 criterion = F.cross_entropy
-regularizer = utils.l2_regularizer(args.wd)
+regularizer = curves_utils.l2_regularizer(args.wd)
 
 
 def get_xy(point, origin, vector_x, vector_y):
