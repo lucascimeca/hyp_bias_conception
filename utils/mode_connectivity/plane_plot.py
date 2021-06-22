@@ -7,7 +7,7 @@ import os
 import seaborn as sns
 
 parser = argparse.ArgumentParser(description='Plane visualization')
-parser.add_argument('--dir', type=str, default='/tmp/curve/', metavar='DIR',
+parser.add_argument('--dir', type=str, default='D:\Work\hyp_bias_conception\models\pretrained\mode_files\color-to-shape', metavar='DIR',
                     help='training directory (default: None)')
 
 args = parser.parse_args()
@@ -67,7 +67,7 @@ plt.figure(figsize=(12.4, 7))
 
 contour, contourf, colorbar = plane(
     file['grid'],
-    file['tr_loss'],
+    file['tr_nll'],
     vmax=5.0,
     log_alpha=-5.0,
     N=7
@@ -92,7 +92,32 @@ plt.figure(figsize=(12.4, 7))
 
 contour, contourf, colorbar = plane(
     file['grid'],
-    file['te_err'],
+    file['te_from_nll'],
+    vmax=40,
+    log_alpha=-1.0,
+    N=7
+)
+
+bend_coordinates = file['bend_coordinates']
+curve_coordinates = file['curve_coordinates']
+
+plt.scatter(bend_coordinates[[0, 2], 0], bend_coordinates[[0, 2], 1], marker='o', c='k', s=120, zorder=2)
+plt.scatter(bend_coordinates[1, 0], bend_coordinates[1, 1], marker='D', c='k', s=120, zorder=2)
+plt.plot(curve_coordinates[:, 0], curve_coordinates[:, 1], linewidth=4, c='k', label='$w(t)$', zorder=4)
+plt.plot(bend_coordinates[[0, 2], 0], bend_coordinates[[0, 2], 1], c='k', linestyle='--', dashes=(3, 4), linewidth=3, zorder=2)
+
+plt.margins(0.0)
+plt.yticks(fontsize=18)
+plt.xticks(fontsize=18)
+colorbar.ax.tick_params(labelsize=18)
+plt.savefig(os.path.join(args.dir, 'test_error_plane.pdf'), format='pdf', bbox_inches='tight')
+plt.show()
+
+plt.figure(figsize=(12.4, 7))
+
+contour, contourf, colorbar = plane(
+    file['grid'],
+    file['te_to_nll'],
     vmax=40,
     log_alpha=-1.0,
     N=7
