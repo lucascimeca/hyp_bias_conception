@@ -187,11 +187,11 @@ def test_path(model, criterion, trainloader_diag, trainloader_from, trainloader_
         tr_res = curve_utils.test(trainloader_diag, model, criterion, regularizer, t=t)
         te_to_res = curve_utils.test(trainloader_to, model, criterion, regularizer, t=t)
         te_from_res = curve_utils.test(trainloader_from, model, criterion, regularizer, t=t)
-        tr_loss[i] = tr_res['loss']
+        tr_loss[i] = tr_res['nll']
         tr_acc[i] = tr_res['accuracy']
         tr_err[i] = 100.0 - tr_acc[i]
-        te_to_loss[i] = te_to_res['loss']
-        te_from_loss[i] = te_from_res['loss']
+        te_to_loss[i] = te_to_res['nll']
+        te_from_loss[i] = te_from_res['nll']
         te_to_acc[i] = te_to_res['accuracy']
         te_from_acc[i] = te_from_res['accuracy']
         te_to_err[i] = 100.0 - te_to_acc[i]
@@ -223,9 +223,9 @@ def test_path(model, criterion, trainloader_diag, trainloader_from, trainloader_
          te_from_loss_avg, te_from_loss_int],
         ['test to loss', te_to_loss[0], te_to_loss[-1], te_to_loss_min, te_to_loss_max, te_to_loss_avg,
          te_to_loss_int],
-        ['test error (%)', te_from_err[0], te_from_err[-1], te_from_err_min, te_from_err_max, te_from_err_avg,
+        ['test error (%) {}'.format(feature_from), te_from_err[0], te_from_err[-1], te_from_err_min, te_from_err_max, te_from_err_avg,
          te_from_err_int],
-        ['test error (%)', te_to_err[0], te_to_err[-1], te_to_err_min, te_to_err_max, te_to_err_avg,
+        ['test error (%) {}'.format(feature_to), te_to_err[0], te_to_err[-1], te_to_err_min, te_to_err_max, te_to_err_avg,
          te_to_err_int],
     ], [
         '', 'start', 'end', 'min', 'max', 'avg', 'int'
@@ -240,11 +240,6 @@ def test_path(model, criterion, trainloader_diag, trainloader_from, trainloader_
         tr_loss_max=tr_loss_max,
         tr_loss_avg=tr_loss_avg,
         tr_loss_int=tr_loss_int,
-        # tr_nll=tr_nll,
-        # tr_nll_min=tr_nll_min,
-        # tr_nll_max=tr_nll_max,
-        # tr_nll_avg=tr_nll_avg,
-        # tr_nll_int=tr_nll_int,
         tr_acc=tr_acc,
         tr_err=tr_err,
         tr_err_min=tr_err_min,
@@ -261,11 +256,6 @@ def test_path(model, criterion, trainloader_diag, trainloader_from, trainloader_
         te_to_loss_max=te_to_loss_max,
         te_to_loss_avg=te_to_loss_avg,
         te_to_loss_int=te_to_loss_int,
-        # te_nll=te_nll,
-        # te_nll_min=te_nll_min,
-        # te_nll_max=te_nll_max,
-        # te_nll_avg=te_nll_avg,
-        # te_nll_int=te_nll_int,
         te_from_acc=te_from_acc,
         te_from_err=te_from_err,
         te_from_err_min=te_from_err_min,
@@ -689,7 +679,7 @@ if __name__ == '__main__':
                              ' | '.join(model_names) +
                              ' (default: resnet20)')
     parser.add_argument('--depth', type=int, default=20, help='Model depth.')
-    parser.add_argument('--manualSeed', default=12345, type=int, help='manual seed')
+    parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
     # nsml
     parser.add_argument('--pause', default=0, type=int)
     parser.add_argument('--mode', default='train', type=str)

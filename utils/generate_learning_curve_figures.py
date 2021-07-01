@@ -3,6 +3,15 @@ import matplotlib.pyplot as plt
 from utils.results_utils import *
 
 TENSORBOARD_FOLDER = "./../runs/"
+RESULTS_FOLDER = "./../results/generated/"
+
+# ARCHITECTURE = "resnet"
+# ARCHITECTURE = "fft"
+ARCHITECTURE = "vit"
+PLOT_TRAIN_LOSS = False
+PLOT_TRAIN_ACC = True
+PLOT_VALID_ACC = True
+
 
 # ['#e52592', '#425066', '#12b5cb', '#f9ab00', '#9334e6', '#7cb342', '#e8710a']
 feature_to_color_dict = {
@@ -21,8 +30,10 @@ feature_to_color_dict = {
 
 def plot_shades(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_parameter=0.6, cap=20,
                 type='acc', smoothing=True, ylim=None):
-    fig = plt.figure(figsize=(7, 4))
+    fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
+
+    text_labels = []
 
     for i, key in enumerate(data.keys()):
 
@@ -61,13 +72,20 @@ def plot_shades(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_p
                         facecolor=feature_to_color_dict[task_name],
                         alpha=0.35)
 
+
         if task_name != "":
-            plt.text(xs[xs < cap][-5],
-                     ys_avg[xs < cap][-5]+2,
-                     task_name,
-                     fontsize=14,
-                     color=feature_to_color_dict[task_name],
-                     horizontalalignment='center')
+            text_labels.append([xs[xs < cap][-7], ys_avg[xs < cap][-7]+2, task_name])
+
+    text_labels = sorted(text_labels, key=lambda x: x[1], reverse=True)
+    text_ys = [x[1] for x in text_labels]
+    for i, (x, y, label) in enumerate(text_labels):
+        while np.any([abs(y-lby) <= 10 for lby in text_ys[:i]]):
+            y -= 10
+        text_ys[i] = y
+        plt.text(x, y, label,
+                 fontsize=16,
+                 color=feature_to_color_dict[label],
+                 horizontalalignment='center')
 
     # plt.autoscale(enable=True, axis='y')
     if ylim is None:
@@ -77,12 +95,18 @@ def plot_shades(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_p
     else:
         plt.ylim(ylim)
 
-    ax.set_title(title)
-    ax.legend()
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(y_label)
+    # ax.set_title(title)
+    ax.legend(loc='lower left')
+    ax.set_xlabel(x_label, fontsize=12)
+    ax.set_ylabel(y_label, fontsize=12)
     ax.grid()
     plt.show()
+
+    if 'test' in title.lower():
+        fig.savefig(os.path.join(RESULTS_FOLDER, '{}_training_comparison_{}.pdf'.format(ARCHITECTURE, title.split(" ")[0])),
+                    format='pdf',
+                    dpi=300,
+                    bbox_inches='tight')
 
 
 def plot_all(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_parameter=0.6,
@@ -132,9 +156,9 @@ def plot_all(data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_para
 
 
 if __name__ == "__main__":
-    PLOT_TRAIN_LOSS = False
-    PLOT_TRAIN_ACC = True
-    PLOT_VALID_ACC = True
+
+    if not folder_exists(RESULTS_FOLDER):
+        folder_create(RESULTS_FOLDER)
 
     data_dict = convert_tb_data(f"{TENSORBOARD_FOLDER}", apply_row_limits=False)
 
@@ -194,6 +218,6 @@ if __name__ == "__main__":
                             y_label='Accuracy',
                             # smoothing_parameter=0.0,
                             type='acc',
-                            cap=120,
+                            cap=160,
                             ylim=(-5, 110)
                             )

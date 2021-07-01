@@ -108,9 +108,9 @@ class FeatureDataset(Dataset):
             subsampled_indeces += self.indices_by_label[lv].tolist()
 
         print()
-        self.indeces = sorted(self.indeces[subsampled_indeces])
-        if self.indices_by_label is not None:
-            self._create_subsets()
+        self.indeces = np.sort(self.indeces[subsampled_indeces])
+        # if self.indices_by_label is not None:
+        #     self._create_subsets()
 
     def __len__(self):
         return len(self.indeces)
@@ -145,9 +145,11 @@ class FeatureDataset(Dataset):
         return self.indeces[idx]
 
     def merge_new_dataset(self, feature_dataset):
-        self.indeces = sorted(np.unique(np.concatenate((self.indeces , feature_dataset.indeces), axis=0)))
+        self.indeces = np.sort(np.unique(np.concatenate((self.indeces, feature_dataset.indeces), axis=0)))
         self.labels[feature_dataset.indeces] = feature_dataset.labels[feature_dataset.indeces]
-        self.indices_by_label = None
+        self._create_subsets()
+        self._subsample(len(self.indeces))
+        # self.indices_by_label = None
 
     def get_indeces(self):
         return self.indeces
@@ -155,7 +157,7 @@ class FeatureDataset(Dataset):
     def get_sample_by_class(self, label, idx):
         if self.indices_by_label is None:
             self._create_subsets()
-        return self.dataset[self.indices_by_label[label][idx]]
+        return self.dataset['imgs'][self.indices_by_label[label][idx]]
 
     def get_class_length(self, label):
         if self.indices_by_label is None:
@@ -412,38 +414,12 @@ class FeatureCombinationCreator:
 
             offdiag_indeces[feature] = all_indeces[np.logical_and(np.logical_not(diag_condition), offdiag_condition)]
 
-        # sample if you want less samples
-        # if isinstance(number_of_samples, int):
-        #     if len(diag_indeces) > number_of_samples:
-        #         # rng = np.random.default_rng(12345)
-        #         # choice = rng.choice(len(diag_indeces), size=number_of_samples)
-        #         choice = np.linspace(0, len(diag_indeces), number_of_samples, endpoint=False).astype(np.int)
-        #         diag_indeces = diag_indeces[choice]
-        #     elif len(diag_indeces) < number_of_samples:
-        #         print(
-        #             "Warning: {} samples for the main diagonal could not be found in the dataset, "
-        #             "{} are being used instead.".format(
-        #                 number_of_samples, len(diag_indeces)))
-        #         number_of_samples = len(diag_indeces)
-        #
-        #     for feature in self.feature_variants:
-        #         if len(offdiag_indeces[feature]) > number_of_samples:
-        #             # rng = np.random.default_rng(12345)
-        #             # choice = rng.choice(len(offdiag_indeces[feature]), size=number_of_samples)
-        #             choice = np.linspace(0, len(offdiag_indeces[feature]), number_of_samples, endpoint=False).astype(np.int)
-        #             offdiag_indeces[feature] = offdiag_indeces[feature][choice]
-        #         elif len(offdiag_indeces[feature]) < number_of_samples:
-        #             print(
-        #                 "Warning: {} samples for the off diagonal could not be found in the dataset, "
-        #                 "{} are being used instead.".format(
-        #                     number_of_samples, len(offdiag_indeces[feature])))
-
         train_size = round(train_split * diag_indeces.shape[0])
         val_size = round(valid_split * diag_indeces.shape[0])
         test_size = diag_indeces.shape[0] - train_size - val_size
 
         # ----------  create round one dataset ----------
-        torch.manual_seed(torch.initial_seed())
+        # torch.manual_seed(torch.initial_seed())
         ro_train_idx, ro_valid_idx, ro_test_idx = torch.utils.data.random_split(
             diag_indeces, [train_size, val_size, test_size]
         )
@@ -457,7 +433,7 @@ class FeatureCombinationCreator:
                 resize=resize,
                 no_of_feature_lvs=self.no_of_feature_lvs,
                 latent_to_idx=self.latent_to_idx,
-                latent_type = self.latent_type,
+                latent_type=self.latent_type,
                 task_dict=self.task_dict,
                 number_of_samples=number_of_samples,
                 feature=self.feature_variants[0],  # doesn't matter within diag indeces
@@ -470,7 +446,7 @@ class FeatureCombinationCreator:
                 resize=resize,
                 no_of_feature_lvs=self.no_of_feature_lvs,
                 latent_to_idx=self.latent_to_idx,
-                latent_type = self.latent_type,
+                latent_type=self.latent_type,
                 task_dict=self.task_dict,
                 number_of_samples=number_of_samples,
                 feature=self.feature_variants[0]  # doesn't matter within diag indeces
@@ -483,7 +459,7 @@ class FeatureCombinationCreator:
                 resize=resize,
                 no_of_feature_lvs=self.no_of_feature_lvs,
                 latent_to_idx=self.latent_to_idx,
-                latent_type = self.latent_type,
+                latent_type=self.latent_type,
                 task_dict=self.task_dict,
                 number_of_samples=number_of_samples,
                 feature=self.feature_variants[0]  # doesn't matter within diag indeces
@@ -499,7 +475,7 @@ class FeatureCombinationCreator:
             train_size = round(train_split * offdiag_indeces[feature].shape[0])
             val_size = round(valid_split * offdiag_indeces[feature].shape[0])
             test_size = offdiag_indeces[feature].shape[0] - train_size - val_size
-            torch.manual_seed(torch.initial_seed())
+            # torch.manual_seed(torch.initial_seed())
             rt_train_idx, rt_valid_idx, rt_test_idx = torch.utils.data.random_split(
                 offdiag_indeces[feature], [train_size, val_size, test_size]
             )
@@ -512,7 +488,7 @@ class FeatureCombinationCreator:
                     resize=resize,
                     no_of_feature_lvs=self.no_of_feature_lvs,
                     latent_to_idx=self.latent_to_idx,
-                    latent_type = self.latent_type,
+                    latent_type=self.latent_type,
                     task_dict=self.task_dict,
                     number_of_samples=number_of_samples,
                     feature=feature
@@ -525,7 +501,7 @@ class FeatureCombinationCreator:
                     resize=resize,
                     no_of_feature_lvs=self.no_of_feature_lvs,
                     latent_to_idx=self.latent_to_idx,
-                    latent_type = self.latent_type,
+                    latent_type=self.latent_type,
                     task_dict=self.task_dict,
                     number_of_samples=number_of_samples,
                     feature=feature
@@ -538,7 +514,7 @@ class FeatureCombinationCreator:
                     resize=resize,
                     no_of_feature_lvs=self.no_of_feature_lvs,
                     latent_to_idx=self.latent_to_idx,
-                    latent_type = self.latent_type,
+                    latent_type=self.latent_type,
                     task_dict=self.task_dict,
                     number_of_samples=number_of_samples,
                     feature=feature
@@ -664,8 +640,9 @@ class FeatureCombinationCreator:
             plt.close('all')
 
             fig.savefig(
-                "C:/Users/Luca/Downloads/{}.png".format(feature),
-                bbox_inches="tight"
+                "C:/Users/Luca/Downloads/{}.pdf".format(feature),
+                bbox_inches="tight",
+                dpi=300
             )
             plt.show()
         return True

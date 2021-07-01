@@ -63,7 +63,58 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
-def run_experiment(args, experiments=None, dsc=None, scope=None):
+def test(testloader, model, criterion, save=False, folder=''):
+    global best_acc, global_step
+    losses = AverageMeter()
+    accuracies = AverageMeter()
+    # switch to evaluate mode
+    model.eval()
+    # if save:
+    outputs_to_save = []
+    targets_to_save = []
+    indeces_to_save = []
+
+    for batch_idx, (indeces, inputs, targets) in enumerate(testloader):
+        inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+
+        # compute output
+        model.to(DEVICE)
+        outputs = model(inputs)
+
+        # if save:
+        outputs_to_save += [outputs.clone().detach().cpu()]
+        targets_to_save += [targets.clone().detach().cpu()]
+        indeces_to_save += [indeces.clone().detach().cpu()]
+
+        loss = criterion(outputs, targets.squeeze())
+        # measure accuracy and record loss
+        acc, = accuracy(outputs.data, targets.data)
+        losses.update(loss.data.item(), inputs.size(0))
+        accuracies.update(acc.item(), inputs.size(0))
+
+    # if save:
+    outputs_to_save = torch.cat(outputs_to_save, dim=0).numpy()
+    targets_to_save = torch.cat(targets_to_save, dim=0).numpy()
+    indeces_to_save = torch.cat(indeces_to_save, dim=0).numpy()
+
+        # np.savez_compressed(folder + 'predictions',
+        #                     outputs=outputs_to_save,
+        #                     targets=targets_to_save,
+        #                     indeces=indeces_to_save)
+
+    return losses.avg, accuracies.avg, targets_to_save, outputs_to_save
+
+
+def zipfolder(foldername, target_dir):
+    zipobj = zipfile.ZipFile(foldername + '.zip', 'w', zipfile.ZIP_DEFLATED)
+    rootlen = len(target_dir)
+    for base, dirs, files in os.walk(target_dir):
+        for file in files:
+            fn = os.path.join(base, file)
+            zipobj.write(fn, fn[rootlen:])
+
+
+def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=None):
 
     # A flag for distributed setup
     WORLD_SIZE = len(PARALLEL_WORLD)
@@ -76,10 +127,27 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
     if not folder_exists(DIRECTION_FILES_FOLDER):
         folder_create(DIRECTION_FILES_FOLDER)
 
+    #  -------------- DATA --------------------------
+    resize = None
+    if 'face' in args.dataset:
+        resize = (64, 64)
+
+    print('==> Preparing dataset dsprites ')
+    round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
+        number_of_samples=5000,
+        features_variants=experiment_features,
+        resize=resize,
+        train_split=1.,
+        valid_split=0.,
+    )
+
+    num_classes = dsc.no_of_feature_lvs
+
     #--------------------------------------------------------------------------
     # Check plotting resolution
     #--------------------------------------------------------------------------
     files = get_filenames(DIRECTION_PRETRAINED_FOLDER, file_ending='pth')
+    files = sorted(files, key=lambda x: x.split("-")[1])
 
     tot_exp_no = len(files) * args.r_levels * args.samples_no
     cnt = 0
@@ -101,22 +169,6 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         sample_no = fs[2]
         feature_to_augment = exp_key.split("_")[0]
 
-        #  -------------- DATA --------------------------
-        resize = None
-        if 'face' in args.dataset:
-            resize = (64, 64)
-
-        print('==> Preparing dataset dsprites ')
-        round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-            number_of_samples=5000,
-            features_variants=experiments[exp_key],
-            resize=resize,
-            train_split=1.,
-            valid_split=0.,
-        )
-
-        num_classes = dsc.no_of_feature_lvs
-
         # create train dataset for main diagonal -- round one
         training_data = copy.deepcopy(round_one_dataset['train'])
 
@@ -127,9 +179,8 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         print("Data Length: {}".format(len(training_data)))
 
         # create train dataset for main diagonal -- round one
-        trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
-                                      shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
+        trainloader = data.DataLoader(training_data, batch_size=args.train_batch, shuffle=True,
+                                      num_workers=args.workers, worker_init_fn=seed_worker)
 
         #  -------------- MODEL --------------------------
         print("==> creating model '{}'".format(args.arch))
@@ -164,15 +215,27 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
         model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
 
         model = nn.DataParallel(model).to(DEVICE)
+        # torch.no_grad()
 
         cudnn.benchmark = True
         print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
 
         criterion = nn.CrossEntropyLoss()
 
-        base_loss, base_acc = test(trainloader, model, criterion, save=False)
+        base_loss, base_acc, targets, outputs = test(trainloader, model, criterion, save=False)
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
+
+        for i in range(20):
+            label = round(i % dsc.no_of_feature_lvs)
+            img = round_two_datasets['color']['train'].get_sample_by_class(label, i)
+
+            if img.max() <= 1.:
+                img = (img * 255).to(torch.uint8)
+
+            plt.imshow(img.permute((1, 2, 0)).contiguous().squeeze())
+            plt.imshow(img)
+            plt.title("class {}".format(label))
 
         continue
         spherical_losses = []
@@ -227,56 +290,6 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
                             local_rs=local_rs)
 
 
-def test(testloader, model, criterion, save=False, folder=''):
-    global best_acc, global_step
-    losses = AverageMeter()
-    accuracies = AverageMeter()
-    # switch to evaluate mode
-    model.train()
-    if save:
-        outputs_to_save = []
-        targets_to_save = []
-        indeces_to_save = []
-
-    for batch_idx, (indeces, inputs, targets) in enumerate(testloader):
-        inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-
-        # compute output
-        model.to(DEVICE)
-        outputs = model(inputs)
-
-        if save:
-            outputs_to_save += [outputs.clone().detach().cpu()]
-            targets_to_save += [targets.clone().detach().cpu()]
-            indeces_to_save += [indeces.clone().detach().cpu()]
-
-        loss = criterion(outputs, targets.squeeze())
-        # measure accuracy and record loss
-        acc, = accuracy(outputs.data, targets.data)
-        losses.update(loss.data.item(), inputs.size(0))
-        accuracies.update(acc.item(), inputs.size(0))
-
-    if save:
-        outputs_to_save = torch.cat(outputs_to_save, dim=0).numpy()
-        targets_to_save = torch.cat(targets_to_save, dim=0).numpy()
-        indeces_to_save = torch.cat(indeces_to_save, dim=0).numpy()
-
-        np.savez_compressed(folder + 'predictions',
-                            outputs=outputs_to_save,
-                            targets=targets_to_save,
-                            indeces=indeces_to_save)
-
-    return losses.avg, accuracies.avg
-
-
-def zipfolder(foldername, target_dir):
-    zipobj = zipfile.ZipFile(foldername + '.zip', 'w', zipfile.ZIP_DEFLATED)
-    rootlen = len(target_dir)
-    for base, dirs, files in os.walk(target_dir):
-        for file in files:
-            fn = os.path.join(base, file)
-            zipobj.write(fn, fn[rootlen:])
-
 
 if __name__ == '__main__':
 
@@ -286,7 +299,7 @@ if __name__ == '__main__':
     )
     parser = argparse.ArgumentParser(description='PyTorch Feature Combination Mode')
     # Datasets
-    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
@@ -318,7 +331,7 @@ if __name__ == '__main__':
     parser.add_argument('--r_levels', default=50, type=int, help='max radius')
     parser.add_argument('--samples_no', default=300, type=int, help='number of samples per radius')
     # Miscs
-    parser.add_argument('--manualSeed', default=12345, type=int, help='manual seed')
+    parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
     # nsml
     parser.add_argument('--pause', default=0, type=int)
     parser.add_argument('--mode', default='train', type=str)
@@ -332,24 +345,15 @@ if __name__ == '__main__':
     # experiments
     if 'color' in args.dataset:
         # experiments
-        experiments = {
-            "shape_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "scale_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "orientation_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "color_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "diagonal": ('shape', 'scale', 'orientation', 'color'),
-        }
+        experiment_keys = ["shape_augmentation", "scale_augmentation", "orientation_augmentation", "color_augmentation", "diagonal"]
+        experiment_features = ['shape', 'scale', 'orientation', 'color']
         dsc = ColorDSpritesCreator(
             data_path='./data/',
             filename="color_dsprites_pruned.h5"
         )
     elif 'face' in args.dataset:
-        experiments = {
-            "age_augmentation": ('age', 'gender', 'ethnicity'),
-            "gender_augmentation": ('age', 'gender', 'ethnicity'),
-            "ethnicity_augmentation": ('age', 'gender', 'ethnicity'),
-            "diagonal": ('age', 'gender', 'ethnicity')
-        }
+        experiment_keys = ["age_augmentation", "gender_augmentation", "ethnicity_augmentation", "diagonal"]
+        experiment_features = ['age', 'gender', 'ethnicity']
         dsc = UTKFaceCreator(
             data_path='./data/',
             filename='UTKFace.h5'
@@ -359,7 +363,8 @@ if __name__ == '__main__':
 
     try:
         run_experiment(args,
-                       experiments=experiments,
+                       experiment_keys=experiment_keys,
+                       experiment_features=experiment_features,
                        dsc=dsc,
                        scope=locals())
         print("done")

@@ -135,4 +135,5 @@ results/
 Downloads/
 .idea/
 models/pretrained/direction_files/
+models/pretrained/
 *.pth

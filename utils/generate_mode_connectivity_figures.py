@@ -117,6 +117,48 @@ def plot_curve(file, feature_from, feature_to, results_folder, vmax=None, log_al
                 bbox_inches='tight')
     plt.show()
 
+
+def plot_curve_trail(curve_file, feature_from, feature_to, kpi='loss', results_folder=""):
+    fig = plt.figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    ax.grid()
+    ax.set_title("Path tracing", fontsize=18)
+
+    if kpi == 'loss':
+        ys_diag = curve_file['tr_loss']
+        ys_from = curve_file['te_from_loss']
+        ys_to = curve_file['te_to_loss']
+        ax.set_ylabel('Loss', fontsize=14)
+    else:
+        ys_diag = curve_file['tr_err']
+        ys_from = curve_file['te_from_err']
+        ys_to = curve_file['te_to_err']
+        ax.set_ylabel('Error (%)', fontsize=14)
+
+    plt.plot(ys_diag,
+             color=feature_to_color_dict["diagonal"],
+             label="Diagonal",
+             lw=3,
+             alpha=.8)
+    plt.plot(ys_from,
+             color=feature_to_color_dict[feature_from],
+             label=f"{feature_from}".capitalize(),
+             lw=3,
+             alpha=.8)
+    plt.plot(ys_to,
+             color=feature_to_color_dict[feature_to],
+             label=f"{feature_to}".capitalize(),
+             lw=3,
+             alpha=.8)
+
+    ax.legend(fontsize=12)
+    ax.set_xlabel('Path Step', fontsize=14)
+    plt.show()
+    fig.savefig(os.path.join(results_folder, 'loss_trail_from-{}_to-{}--{}.pdf'.format(feature_from, feature_to, kpi)),
+                format='pdf',
+                bbox_inches='tight')
+
+
 if __name__ == "__main__":
 
     if not folder_exists(RESULTS_FOLDER):
@@ -129,22 +171,36 @@ if __name__ == "__main__":
         feature_from = mode_folder.split("-")[0]
         feature_to = mode_folder.split("-")[-1]
 
-        file = np.load(os.path.join(MODE_CONNECTIVITY_FOLDER + mode_folder, 'plane.npz'))
+        plane_file = np.load(os.path.join(MODE_CONNECTIVITY_FOLDER + mode_folder, 'plane.npz'))
 
-        plot_curve(file=file,
+        plot_curve(file=plane_file,
                    feature_from=feature_from,
                    feature_to=feature_to,
                    results_folder=RESULTS_FOLDER,
                    dataset_name="diagonal")
 
-        plot_curve(file=file,
+        plot_curve(file=plane_file,
                    feature_from=feature_from,
                    feature_to=feature_to,
                    results_folder=RESULTS_FOLDER,
                    dataset_name="from")
 
-        plot_curve(file=file,
+        plot_curve(file=plane_file,
                    feature_from=feature_from,
                    feature_to=feature_to,
                    results_folder=RESULTS_FOLDER,
                    dataset_name="to")
+
+        curve_file = np.load(os.path.join(MODE_CONNECTIVITY_FOLDER + mode_folder, 'curve.npz'))
+
+        plot_curve_trail(kpi="loss",
+                         curve_file=curve_file,
+                         feature_from=feature_from,
+                         feature_to=feature_to,
+                         results_folder=RESULTS_FOLDER)
+
+        plot_curve_trail(kpi="err",
+                         curve_file=curve_file,
+                         feature_from=feature_from,
+                         feature_to=feature_to,
+                         results_folder=RESULTS_FOLDER)

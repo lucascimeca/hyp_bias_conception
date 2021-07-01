@@ -164,7 +164,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         s = copy.deepcopy(model.state_dict())  # deepcopy since state_dict are references
 
         model = nn.DataParallel(model).to(DEVICE)
-
+        torch.no_grad()
         # --------------------------------------------------------------------------
         # Setup the direction file and the surface file
         # --------------------------------------------------------------------------

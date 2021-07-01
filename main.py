@@ -61,16 +61,17 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
     for exp_key in experiments.keys():
         sample_no = 0
-        while sample_no < samples:
-            global best_acc, global_step
 
-            # Random seed
-            if args.manualSeed is None:
-                args.manualSeed = random.randint(1, 10000)
-            random.seed(args.manualSeed)
-            torch.manual_seed(args.manualSeed)
-            if use_cuda:
-                torch.cuda.manual_seed_all(args.manualSeed)
+        random.seed(args.manualSeed)
+        np.random.seed(args.manualSeed)
+        torch.manual_seed(args.manualSeed)
+        torch.cuda.manual_seed(args.manualSeed)
+        torch.cuda.manual_seed_all(args.manualSeed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+
+        while sample_no < samples:
+            global global_step
 
             # Data
             resize = None
@@ -79,10 +80,10 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             print('==> Preparing dataset dsprites ')
             round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-                number_of_samples=10000,
+                number_of_samples=5000,
                 features_variants=experiments[exp_key],
                 resize=resize,
-                train_split=0.5,
+                train_split=0.7,
                 valid_split=0.3,
             )
 
@@ -109,7 +110,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                                                        worker_init_fn=seed_worker)
 
 
-            # Model
+            #  -------------- MODEL --------------------------
             print("==> creating model '{}'".format(args.arch))
             if 'color' in args.dataset or 'face' in args.dataset:
                 no_of_channels = 3
@@ -281,9 +282,8 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
 
 
-
 def test(testloader, model, criterion, save=False, folder=''):
-    global best_acc, global_step
+    global global_step
     losses = AverageMeter()
     accuracies = AverageMeter()
     # switch to evaluate mode
@@ -357,9 +357,9 @@ if __name__ == '__main__':
     # Optimization options
     parser.add_argument('--epochs', default=120, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('--train-batch', default=256, type=int, metavar='N',
+    parser.add_argument('--train-batch', default=500, type=int, metavar='N',
                         help='train batchsize')
-    parser.add_argument('--test-batch', default=256, type=int, metavar='N',
+    parser.add_argument('--test-batch', default=500, type=int, metavar='N',
                         help='test batchsize')
     parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                         metavar='LR', help='initial learning rate')
@@ -373,7 +373,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -426,13 +426,12 @@ if __name__ == '__main__':
         )
     elif 'color' in args.dataset:
         # experiments
-        experiments = {
-            "shape_scale_orientation_color": ('shape', 'scale', 'orientation', 'color'),
-            "shape_scale_color": ('shape', 'scale', 'color'),
-            "shape_scale_orientation": ('shape', 'scale', 'orientation'),
-            "scale_orientation_color": ('scale', 'orientation', 'color'),
-            "shape_orientation_color": ('shape', 'orientation', 'color'),
-        }
+        combinations = itertools.combinations(['shape', 'scale', 'orientation', 'color'], 3)
+        experiments = {}
+        for comb in combinations:
+            key = "_".join([str_elem.replace('_', '-') for str_elem in comb])
+            experiments[key] = comb
+        experiments['shape_scale_orientation_color'] = ('shape', 'scale', 'orientation', 'color')
         dsc = ColorDSpritesCreator(
             data_path='./data/',
             filename="color_dsprites_pruned.h5"

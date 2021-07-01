@@ -48,7 +48,7 @@ def test(testloader, model, criterion, save=False, folder=''):
     losses = AverageMeter()
     accuracies = AverageMeter()
     # switch to evaluate mode
-    model.train()
+    model.eval()
     if save:
         outputs_to_save = []
         targets_to_save = []
@@ -103,7 +103,7 @@ def zipfolder(foldername, target_dir):
             zipobj.write(fn, fn[rootlen:])
 
 
-def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
+def run_experiment(args, experiment_keys, experiment_features, dsc=None, samples=10, scope=None):
 
     # A flag for distributed setup
     WORLD_SIZE = len(PARALLEL_WORLD)
@@ -114,9 +114,26 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                                 rank=MY_RANK, world_size=WORLD_SIZE)
         args.train_batch //= WORLD_SIZE
 
+
+    resize = None
+    if 'face' in args.dataset:
+        resize = (64, 64)
+
+    #  -------------- DATA --------------------------
+    print('==> Preparing dataset dsprites ')
+    round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
+        number_of_samples=5000,
+        features_variants=experiment_features,
+        resize=resize,
+        train_split=1.,
+        valid_split=0.,
+    )
+
+    num_classes = dsc.no_of_feature_lvs
+
     web_browser_opened = False
     folder_create(TENSORBOARD_FOLDER, exist_ok=True)
-    for exp_key in experiments.keys():
+    for exp_key in sorted(experiment_keys):
         feature_to_augment = exp_key.split('_')[0]
         sample_no = 0
         while sample_no < samples:
@@ -131,21 +148,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             torch.backends.cudnn.benchmark = False
             torch.backends.cudnn.deterministic = True
 
-            #  -------------- DATA --------------------------
-            resize = None
-            if 'face' in args.dataset:
-                resize = (64, 64)
-
-            print('==> Preparing dataset dsprites ')
-            round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-                number_of_samples=5000,
-                features_variants=experiments[exp_key],
-                resize=resize,
-                train_split=1.,
-                valid_split=0.,
-            )
-
-            num_classes = dsc.no_of_feature_lvs
 
             # create train dataset for main diagonal -- round one
             training_data = copy.deepcopy(round_one_dataset['train'])
@@ -157,8 +159,11 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             print("Data Length: {}".format(len(training_data)))
 
             # create train dataset for main diagonal -- round one
-            trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
-                                          shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+            trainloader = data.DataLoader(training_data,
+                                          batch_size=args.train_batch,
+                                          shuffle=True,
+                                          num_workers=args.workers,
+                                          worker_init_fn=seed_worker)
 
             #  -------------- MODEL --------------------------
             print("==> creating model '{}'".format(args.arch))
@@ -215,7 +220,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             folder_create(exp_folder, exist_ok=True)
             logs_folder = exp_folder
 
-            print("\n########### Experiment Set: {} of {}, Sample: {} ###########\n".format(exp_key, experiments[exp_key], sample_no))
+            print("\n########### Experiment Set: {} of {}, Sample: {} ###########\n".format(exp_key, experiment_features, sample_no))
 
             if not NSML:
                 # open tensorboard online
@@ -320,7 +325,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=3, type=int, metavar='N',
+    parser.add_argument('--epochs', default=50, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -347,7 +352,7 @@ if __name__ == '__main__':
     parser.add_argument('--growthRate', type=int, default=12, help='Growth rate for DenseNet.')
     parser.add_argument('--compressionRate', type=int, default=2, help='Compression Rate (theta) for DenseNet.')
     # Miscs
-    parser.add_argument('--manualSeed', default=12345, type=int, help='manual seed')
+    parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
     # Random Erasing
     parser.add_argument('--prob', default=0, type=float, help='Random Erasing probability')
     parser.add_argument('--sh', default=0.4, type=float, help='max erasing area')
@@ -369,24 +374,15 @@ if __name__ == '__main__':
 
     if 'color' in args.dataset:
         # experiments
-        experiments = {
-            "shape_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "scale_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "orientation_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "color_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "diagonal": ('shape', 'scale', 'orientation', 'color'),
-        }
+        experiment_keys = ["shape_augmentation"] #, "scale_augmentation", "orientation_augmentation", "color_augmentation", "diagonal"]
+        experiment_features = ['shape', 'scale', 'orientation', 'color']
         dsc = ColorDSpritesCreator(
             data_path='./data/',
             filename="color_dsprites_pruned.h5"
         )
     elif 'face' in args.dataset:
-        experiments = {
-            "age_augmentation": ('age', 'gender', 'ethnicity'),
-            "gender_augmentation": ('age', 'gender', 'ethnicity'),
-            "ethnicity_augmentation": ('age', 'gender', 'ethnicity'),
-            "diagonal": ('age', 'gender', 'ethnicity')
-        }
+        experiment_keys = ["age_augmentation", "gender_augmentation", "ethnicity_augmentation", "diagonal"]
+        experiment_features = ['age', 'gender', 'ethnicity']
         dsc = UTKFaceCreator(
             data_path='./data/',
             filename='UTKFace.h5'
@@ -396,7 +392,8 @@ if __name__ == '__main__':
 
     try:
         run_experiment(args,
-                       experiments=experiments,
+                       experiment_keys=experiment_keys,
+                       experiment_features=experiment_features,
                        dsc=dsc,
                        samples=1,
                        scope=locals())
