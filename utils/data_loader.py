@@ -13,6 +13,7 @@ from utils.misc.simple_io import *
 from nsml import DATASET_PATH
 from torch.utils.data import Dataset
 
+SEED = 123
 
 def split_data(dataset, train_split, valid_split):
     train_size = round(train_split * len(dataset))
@@ -92,14 +93,18 @@ class FeatureDataset(Dataset):
 
     def _create_subsets(self):
         self.indices_by_label = {}
-        data_indeces = np.array(range(len(self.indeces)))
         for lv in range(self.no_of_feature_lvs):
-            self.indices_by_label[lv] = np.array(sorted(data_indeces[self.labels[self.indeces] == lv]))
+            self.indices_by_label[lv] = np.array(self.indeces[self.labels[self.indeces] == lv])
 
     def _subsample(self, number_of_samples):
         balance_mark = int(number_of_samples/self.no_of_feature_lvs)
         for lv in range(self.no_of_feature_lvs):
-            self.indices_by_label[lv] = self.indices_by_label[lv][:balance_mark]
+            np.random.seed(SEED)
+            # self.indices_by_label[lv] = self.indices_by_label[lv][:balance_mark]
+            if balance_mark < len(self.indices_by_label[lv]):
+                self.indices_by_label[lv] = np.random.choice(self.indices_by_label[lv],
+                                                             size=balance_mark,
+                                                             replace=False)
 
         print("re-balancing data subsample for feature {} with:".format(self.feature))
         subsampled_indeces = []
@@ -108,9 +113,9 @@ class FeatureDataset(Dataset):
             subsampled_indeces += self.indices_by_label[lv].tolist()
 
         print()
-        self.indeces = np.sort(self.indeces[subsampled_indeces])
-        # if self.indices_by_label is not None:
-        #     self._create_subsets()
+        self.indeces = np.sort(subsampled_indeces)
+        if self.indices_by_label is not None:
+            self._create_subsets()
 
     def __len__(self):
         return len(self.indeces)
@@ -146,10 +151,8 @@ class FeatureDataset(Dataset):
 
     def merge_new_dataset(self, feature_dataset):
         self.indeces = np.sort(np.unique(np.concatenate((self.indeces, feature_dataset.indeces), axis=0)))
-        self.labels[feature_dataset.indeces] = feature_dataset.labels[feature_dataset.indeces]
-        self._create_subsets()
-        self._subsample(len(self.indeces))
-        # self.indices_by_label = None
+        self.labels = feature_dataset.labels
+        self.indices_by_label = None
 
     def get_indeces(self):
         return self.indeces
@@ -381,7 +384,10 @@ class FeatureCombinationCreator:
 
                 self.task_dict[feature] = lvs
                 print("cutoffs for {} found at {}".format(feature, lvs[1:]))
-                print("percents for {} found at {}".format(feature, percents))
+                print("percents for {} found at [".format(feature), end="")
+                for percent in percents[:-1]:
+                    print("{:.2f}".format(percent), end=", ")
+                print("{:.2f}]".format(percents[-1]))
 
             # if it's a categorical, then just pick them linearly
             else:
@@ -607,12 +613,12 @@ class FeatureCombinationCreator:
 
                     else:
                         idx = class_indeces[cnt]
-                        img_label = dataset[idx][2]
+                        img_label = dataset.labels[idx]
                         sub_ax = fig.add_subplot(grid[i, j], frameon=False)
 
                         used_idxs.add(idx)
                         sub_ax.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-                        img = dataset[idx][1]
+                        img = dataset.dataset['imgs'][idx]
                         if img.shape[0] > 1:
                             self.cmap = None
                         else:
@@ -620,13 +626,13 @@ class FeatureCombinationCreator:
                         if img.max() <= 1.:
                             img = (img*255).to(torch.uint8)
 
-                        sub_ax.set_title("label: {} ($C^{}_{}={}$)".format(
-                                img_label.item(),
+                        sub_ax.set_title("label: {} ($C^{}_{}={:.2f}$)".format(
+                                img_label,
                                 self.latent_to_idx[feature],
-                                self.latents_classes[dataset.get_original_index(idx), self.latent_to_idx[feature]],
-                                self.latents_values[dataset.get_original_index(idx), self.latent_to_idx[feature]]),
+                                self.latents_classes[idx, self.latent_to_idx[feature]],
+                                self.latents_values[idx, self.latent_to_idx[feature]]),
                             fontsize=10)
-                        if img.shape[0] > 1:
+                        if isinstance(img, torch.Tensor):
                             plt.imshow(img.permute((1, 2, 0)).contiguous().squeeze(), cmap=self.cmap)
                         else:
                             plt.imshow(img.squeeze(), cmap=self.cmap)

@@ -226,16 +226,54 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
 
-        for i in range(20):
-            label = round(i % dsc.no_of_feature_lvs)
-            img = round_two_datasets['color']['train'].get_sample_by_class(label, i)
+        ################################## DEBUG ########################################
+        training_data_color = copy.deepcopy(round_two_datasets['color']['train'])
+        trainloader_color = data.DataLoader(training_data_color, batch_size=args.train_batch, shuffle=True,
+                                      num_workers=args.workers, worker_init_fn=seed_worker)
+
+        training_data_shape = copy.deepcopy(round_two_datasets['shape']['train'])
+        trainloader_shape = data.DataLoader(training_data_shape, batch_size=args.train_batch, shuffle=True,
+                                      num_workers=args.workers, worker_init_fn=seed_worker)
+
+        # switch to evaluate mode
+        model.eval()
+
+        def show_image(img, label):
 
             if img.max() <= 1.:
                 img = (img * 255).to(torch.uint8)
 
             plt.imshow(img.permute((1, 2, 0)).contiguous().squeeze())
-            plt.imshow(img)
+
             plt.title("class {}".format(label))
+            plt.show()
+
+        for batch_idx, (indeces, inputs, targets) in enumerate(trainloader_color):
+            inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+
+            # compute output
+            model.to(DEVICE)
+            outputs = model(inputs)
+
+            loss = criterion(outputs, targets.squeeze())
+            # measure accuracy and record loss
+            acc, = accuracy(outputs.data, targets.data)
+            if batch_idx == 3:
+                break
+
+
+        for batch_idx, (indeces, inputs, targets) in enumerate(trainloader_shape):
+            inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+
+            # compute output
+            model.to(DEVICE)
+            outputs = model(inputs)
+
+            loss = criterion(outputs, targets.squeeze())
+            # measure accuracy and record loss
+            acc, = accuracy(outputs.data, targets.data)
+
+        #################################################################################
 
         continue
         spherical_losses = []

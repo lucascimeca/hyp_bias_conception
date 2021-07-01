@@ -25,8 +25,8 @@ import matplotlib
 dsc = ColorDSpritesCreator(data_path='./../data/', filename='color_dsprites_pruned.h5')
 dsc.get_dataset_fvar(
     number_of_samples=5000,
-    # features_variants=('shape', 'scale', 'orientation', 'color'),
-    features_variants=('color', 'shape'),
+    features_variants=('shape', 'scale', 'orientation', 'color'),
+    # features_variants=('color', 'shape'),
     train_split=1.,
     valid_split=0.
 )
