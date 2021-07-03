@@ -17,24 +17,10 @@ import sys
 import traceback
 
 import nsml
-import copy
 import models as models
 import copy
-import h5py
-import socket
-import os
 import sys
-import numpy as np
-import torchvision
-import utils.surf.mpi4pytorch as mpi
-
-from utils.surf import dataloader
-from utils.surf import evaluation
-import utils.surf.projection as proj
 from utils.surf import net_plotter
-from utils.surf import plot_2D
-from utils.surf import plot_1D
-from utils.surf import scheduler
 from models.convnet import ConvNet
 from models.resnet import ResNet
 from models.ffnet import FFNet
@@ -43,8 +29,6 @@ from nsml import GPU_NUM
 from nsml import PARALLEL_WORLD, PARALLEL_PORTS, MY_RANK
 from utils import AverageMeter, accuracy
 from utils.data_loader import *
-from torch.utils.tensorboard import SummaryWriter
-from tensorboard import program
 from utils.misc.simple_io import *
 from functools import partial
 
@@ -92,17 +76,17 @@ def test(testloader, model, criterion, save=False, folder=''):
         losses.update(loss.data.item(), inputs.size(0))
         accuracies.update(acc.item(), inputs.size(0))
 
-    # if save:
-    outputs_to_save = torch.cat(outputs_to_save, dim=0).numpy()
-    targets_to_save = torch.cat(targets_to_save, dim=0).numpy()
-    indeces_to_save = torch.cat(indeces_to_save, dim=0).numpy()
+    if save:
+        outputs_to_save = torch.cat(outputs_to_save, dim=0).numpy()
+        targets_to_save = torch.cat(targets_to_save, dim=0).numpy()
+        indeces_to_save = torch.cat(indeces_to_save, dim=0).numpy()
 
-        # np.savez_compressed(folder + 'predictions',
-        #                     outputs=outputs_to_save,
-        #                     targets=targets_to_save,
-        #                     indeces=indeces_to_save)
+        np.savez_compressed(folder + 'predictions',
+                            outputs=outputs_to_save,
+                            targets=targets_to_save,
+                            indeces=indeces_to_save)
 
-    return losses.avg, accuracies.avg, targets_to_save, outputs_to_save
+    return losses.avg, accuracies.avg,
 
 
 def zipfolder(foldername, target_dir):
@@ -222,60 +206,67 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
 
         criterion = nn.CrossEntropyLoss()
 
-        base_loss, base_acc, targets, outputs = test(trainloader, model, criterion, save=False)
+        base_loss, base_acc = test(trainloader, model, criterion, save=False)
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
 
         ################################## DEBUG ########################################
-        training_data_color = copy.deepcopy(round_two_datasets['color']['train'])
-        trainloader_color = data.DataLoader(training_data_color, batch_size=args.train_batch, shuffle=True,
-                                      num_workers=args.workers, worker_init_fn=seed_worker)
+        # training_data_color = copy.deepcopy(round_two_datasets['color']['train'])
+        # trainloader_color = data.DataLoader(training_data_color, batch_size=args.train_batch, shuffle=True,
+        #                               num_workers=args.workers, worker_init_fn=seed_worker)
+        #
+        # training_data_shape = copy.deepcopy(round_two_datasets['shape']['train'])
+        # trainloader_shape = data.DataLoader(training_data_shape, batch_size=args.train_batch, shuffle=True,
+        #                               num_workers=args.workers, worker_init_fn=seed_worker)
+        #
+        # # switch to evaluate mode
+        # model.eval()
+        #
+        # def show_image(img, label):
+        #
+        #     if img.max() <= 1.:
+        #         img = (img * 255).to(torch.uint8)
+        #
+        #     plt.imshow(img.permute((1, 2, 0)).contiguous().squeeze())
+        #
+        #     plt.title("class {}".format(label))
+        #     plt.show()
+        #
+        # for batch_idx, (indeces, inputs, targets) in enumerate(trainloader_color):
+        #     inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+        #
+        #     for i in range(10):
+        #         show_image(inputs[i].cpu(), outputs[i].cpu())
+        #
+        #     plt.close('all')
+        #     # compute output
+        #     model.to(DEVICE)
+        #     outputs = model(inputs)
+        #
+        #     loss = criterion(outputs, targets.squeeze())
+        #     # measure accuracy and record loss
+        #     acc, = accuracy(outputs.data, targets.data)
+        #     if batch_idx == 3:
+        #         break
+        #
+        #
+        # for batch_idx, (indeces, inputs, targets) in enumerate(trainloader_shape):
+        #     inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
+        #     for i in range(10):
+        #         show_image(inputs[i].cpu(), outputs[i].cpu())
 
-        training_data_shape = copy.deepcopy(round_two_datasets['shape']['train'])
-        trainloader_shape = data.DataLoader(training_data_shape, batch_size=args.train_batch, shuffle=True,
-                                      num_workers=args.workers, worker_init_fn=seed_worker)
-
-        # switch to evaluate mode
-        model.eval()
-
-        def show_image(img, label):
-
-            if img.max() <= 1.:
-                img = (img * 255).to(torch.uint8)
-
-            plt.imshow(img.permute((1, 2, 0)).contiguous().squeeze())
-
-            plt.title("class {}".format(label))
-            plt.show()
-
-        for batch_idx, (indeces, inputs, targets) in enumerate(trainloader_color):
-            inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-
-            # compute output
-            model.to(DEVICE)
-            outputs = model(inputs)
-
-            loss = criterion(outputs, targets.squeeze())
-            # measure accuracy and record loss
-            acc, = accuracy(outputs.data, targets.data)
-            if batch_idx == 3:
-                break
-
-
-        for batch_idx, (indeces, inputs, targets) in enumerate(trainloader_shape):
-            inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
-
-            # compute output
-            model.to(DEVICE)
-            outputs = model(inputs)
-
-            loss = criterion(outputs, targets.squeeze())
-            # measure accuracy and record loss
-            acc, = accuracy(outputs.data, targets.data)
+        #     plt.close('all')
+        #
+        #     # compute output
+        #     model.to(DEVICE)
+        #     outputs = model(inputs)
+        #
+        #     loss = criterion(outputs, targets.squeeze())
+        #     # measure accuracy and record loss
+        #     acc, = accuracy(outputs.data, targets.data)
 
         #################################################################################
 
-        continue
         spherical_losses = []
         spherical_accs = []
         local_rs = []
@@ -341,7 +332,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
-    parser.add_argument('--epochs', default=25, type=int, metavar='N',
+    parser.add_argument('--epochs', default=2000, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -359,7 +350,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -399,20 +390,20 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError(args.dataset)
 
-    try:
-        run_experiment(args,
-                       experiment_keys=experiment_keys,
-                       experiment_features=experiment_features,
-                       dsc=dsc,
-                       scope=locals())
-        print("done")
+    # try:
+    run_experiment(args,
+                   experiment_keys=experiment_keys,
+                   experiment_features=experiment_features,
+                   dsc=dsc,
+                   scope=locals())
+    print("done")
 
-    except Exception as e:
-        print("Error: {}".format(e))
-        raise e
+    # except Exception as e:
+    #     print("Error: {}".format(e))
+    #     raise e
 
-    finally:
-        print("saving zip...")
-        zipfolder("runs", DIRECTION_FILES_FOLDER)
-        traceback.print_exc()
-        sys.exit()
+    # finally:
+    #     print("saving zip...")
+    #     zipfolder("runs", DIRECTION_FILES_FOLDER)
+    #     traceback.print_exc()
+    #     sys.exit()

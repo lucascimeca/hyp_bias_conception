@@ -114,7 +114,6 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, samples
                                 rank=MY_RANK, world_size=WORLD_SIZE)
         args.train_batch //= WORLD_SIZE
 
-
     resize = None
     if 'face' in args.dataset:
         resize = (64, 64)
@@ -147,7 +146,6 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, samples
             torch.cuda.manual_seed_all(args.manualSeed)
             torch.backends.cudnn.benchmark = False
             torch.backends.cudnn.deterministic = True
-
 
             # create train dataset for main diagonal -- round one
             training_data = copy.deepcopy(round_one_dataset['train'])
@@ -325,7 +323,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=50, type=int, metavar='N',
+    parser.add_argument('--epochs', default=2000, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -374,7 +372,7 @@ if __name__ == '__main__':
 
     if 'color' in args.dataset:
         # experiments
-        experiment_keys = ["shape_augmentation"] #, "scale_augmentation", "orientation_augmentation", "color_augmentation", "diagonal"]
+        experiment_keys = ["shape_augmentation", "scale_augmentation", "orientation_augmentation", "color_augmentation", "diagonal"]
         experiment_features = ['shape', 'scale', 'orientation', 'color']
         dsc = ColorDSpritesCreator(
             data_path='./data/',

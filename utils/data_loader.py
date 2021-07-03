@@ -99,12 +99,15 @@ class FeatureDataset(Dataset):
     def _subsample(self, number_of_samples):
         balance_mark = int(number_of_samples/self.no_of_feature_lvs)
         for lv in range(self.no_of_feature_lvs):
-            np.random.seed(SEED)
+            # np.random.seed(SEED)
             # self.indices_by_label[lv] = self.indices_by_label[lv][:balance_mark]
             if balance_mark < len(self.indices_by_label[lv]):
-                self.indices_by_label[lv] = np.random.choice(self.indices_by_label[lv],
-                                                             size=balance_mark,
-                                                             replace=False)
+                # self.indices_by_label[lv] = np.random.choice(self.indices_by_label[lv],
+                #                                              size=balance_mark,
+                #                                              replace=False)
+                self.indices_by_label[lv] = self.indices_by_label[lv][
+                    [int(x) for x in np.linspace(0, len(self.indices_by_label[lv])-1, balance_mark, )]
+                ]
 
         print("re-balancing data subsample for feature {} with:".format(self.feature))
         subsampled_indeces = []
@@ -144,7 +147,7 @@ class FeatureDataset(Dataset):
 
         tensor_y = torch.Tensor([self.labels[self.indeces[idx]]]).to(dtype=torch.long)
 
-        return self.labels[self.indeces[idx]], tensor_x, tensor_y
+        return self.indeces[idx], tensor_x, tensor_y
 
     def get_original_index(self, idx):
         return self.indeces[idx]
