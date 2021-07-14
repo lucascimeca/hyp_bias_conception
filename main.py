@@ -109,7 +109,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                                                        shuffle=True, num_workers=args.workers,
                                                        worker_init_fn=seed_worker)
 
-
             #  -------------- MODEL --------------------------
             print("==> creating model '{}'".format(args.arch))
             if 'color' in args.dataset or 'face' in args.dataset:
@@ -157,7 +156,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             nsml.bind(model=model)
             if args.pause:
                 nsml.paused(scope=locals())
-
 
             # ---- LOGS folder ----
             exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)

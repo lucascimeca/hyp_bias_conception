@@ -673,7 +673,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='ffnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -696,9 +696,9 @@ if __name__ == '__main__':
                         help='left margin (default: 0.2)')
     parser.add_argument('--margin_right', type=float, default=0.2, metavar='M',
                         help='right margin (default: 0.2)')
-    parser.add_argument('--margin_bottom', type=float, default=0.2, metavar='M',
+    parser.add_argument('--margin_bottom', type=float, default=0.5, metavar='M',
                         help='bottom margin (default: 0.)')
-    parser.add_argument('--margin_top', type=float, default=0.2, metavar='M',
+    parser.add_argument('--margin_top', type=float, default=0.5, metavar='M',
                         help='top margin (default: 0.2)')
 
     args = parser.parse_args()

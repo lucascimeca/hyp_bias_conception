@@ -294,6 +294,17 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, samples
                         patience_cnt = 0
                         found_candidate = True
 
+                    ########### DEBUG ############
+                    model.eval()
+                    out = model(training_data[0][1].unsqueeze(0))
+                    print("{} for real index {}".format(out, training_data.get_original_index([0])))
+
+                    for p in model.parameters():
+                        print(p)
+                        break
+                    #############################
+
+
                 if losses.avg >= best_loss and found_candidate:
                     patience_cnt += 1
 
@@ -323,7 +334,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=2000, type=int, metavar='N',
+    parser.add_argument('--epochs', default=15, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -341,7 +352,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

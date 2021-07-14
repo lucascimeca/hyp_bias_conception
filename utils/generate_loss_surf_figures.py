@@ -78,6 +78,6 @@ if __name__ == '__main__':
     files_plane = [file for file in files if 'data' in file and file.endswith("h5")]
     for file in files_plane:
         filepath = DIRECTION_FILES_FOLDER + file
-        # plot_2d_contour(filepath, surf_name='train_loss', vmin=0.0, vmax=5., vlevel=0.05, show=False)
+        plot_2d_contour(filepath, surf_name='train_loss', vmin=0.0, vmax=1., vlevel=0.02, show=False)
         # h5_to_vtp(filepath, surf_name='train_loss', log=True, zmax=10., interp=1000)
-        plot_2d_contour(filepath, surf_name='train_acc', vmin=30.0, vmax=101., vlevel=5.0, show=False)
+        # plot_2d_contour(filepath, surf_name='train_acc', vmin=30.0, vmax=101., vlevel=5.0, show=False)

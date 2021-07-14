@@ -273,29 +273,29 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
 
         weights = copy.deepcopy(net_plotter.get_weights(model))  # initial parameters
 
+        weights_length = 0
+        for p in model.parameters():
+            weights_length += torch.prod(torch.tensor(p.shape))
+
+        random_params = torch.zeros((1, weights_length))
+
         step = args.max_r/args.r_levels
         for r in torch.arange(step, args.max_r+step, step):
-
-            changes = []
-            for p in model.parameters():
-                random_params = torch.randn((args.samples_no,) + p.shape)
-                changes.append(random_params)
-
-            random_params = torch.cat([change.view(change.shape[0], -1) for change in changes], dim=1)
-            norm = torch.norm(random_params, dim=0)
-            random_params /= norm
-            random_params *= r
-
             losses = []
             accs = []
             for si in range(args.samples_no):
                 start_time = time.time()
 
+                random_params[0, :] = torch.randn(weights_length)
+                norm = torch.norm(random_params, dim=1)
+                random_params /= norm
+                random_params *= r
+
                 w_idx = 0
                 for (p, w) in zip(model.parameters(), weights):
                     n_of_weights = torch.prod(torch.tensor(p.shape))
-                    p.data = w + random_params[si, w_idx:w_idx+n_of_weights].view(p.shape)
-                    w_idx = n_of_weights
+                    p.data = w + random_params[0, w_idx:w_idx+n_of_weights].view(p.shape).type(type(w))
+                    w_idx += n_of_weights
 
                 loss, acc = test(trainloader, model, criterion, save=False)
                 losses.append(loss-base_loss)
@@ -319,7 +319,6 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
                             local_rs=local_rs)
 
 
-
 if __name__ == '__main__':
 
     model_names = sorted(
@@ -328,7 +327,7 @@ if __name__ == '__main__':
     )
     parser = argparse.ArgumentParser(description='PyTorch Feature Combination Mode')
     # Datasets
-    parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
@@ -390,20 +389,20 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError(args.dataset)
 
-    # try:
-    run_experiment(args,
-                   experiment_keys=experiment_keys,
-                   experiment_features=experiment_features,
-                   dsc=dsc,
-                   scope=locals())
-    print("done")
+    try:
+        run_experiment(args,
+                       experiment_keys=experiment_keys,
+                       experiment_features=experiment_features,
+                       dsc=dsc,
+                       scope=locals())
+        print("done")
 
-    # except Exception as e:
-    #     print("Error: {}".format(e))
-    #     raise e
+    except Exception as e:
+        print("Error: {}".format(e))
+        raise e
 
-    # finally:
-    #     print("saving zip...")
-    #     zipfolder("runs", DIRECTION_FILES_FOLDER)
-    #     traceback.print_exc()
-    #     sys.exit()
+    finally:
+        print("saving zip...")
+        zipfolder("runs", DIRECTION_FILES_FOLDER)
+        traceback.print_exc()
+        sys.exit()
