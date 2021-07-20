@@ -289,19 +289,19 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, samples
                     best_loss = test_loss
                     best_acc = test_acc
                     best_epoch = epoch
-                    weight_states_to_save = copy.deepcopy(model.state_dict())
+                    weight_states_to_save = copy.deepcopy(model)  # (model.state_dict())
                     if accuracies.avg == 100.0:
                         patience_cnt = 0
                         found_candidate = True
 
                     ########### DEBUG ############
-                    model.eval()
-                    out = model(training_data[0][1].unsqueeze(0))
-                    print("{} for real index {}".format(out, training_data.get_original_index([0])))
-
-                    for p in model.parameters():
-                        print(p)
-                        break
+                    # model.eval()
+                    # out = model(training_data[0][1].unsqueeze(0))
+                    # print("{} for real index {}".format(out, training_data.get_original_index([0])))
+                    #
+                    # for p in model.parameters():
+                    #     print(p)
+                    #     break
                     #############################
 
 
@@ -332,9 +332,9 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi, multicolor and face supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
-    parser.add_argument('--epochs', default=15, type=int, metavar='N',
+    parser.add_argument('--epochs', default=2000, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='ffnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

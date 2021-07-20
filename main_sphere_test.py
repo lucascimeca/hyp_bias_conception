@@ -194,12 +194,16 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
         else:
             raise NotImplementedError()
 
-        state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
-        state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
-        model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
+        try:
+            state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
+            state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
+            model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
+
+        except Exception as e:
+            model = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
 
         model = nn.DataParallel(model).to(DEVICE)
-        # torch.no_grad()
+        torch.no_grad()
 
         cudnn.benchmark = True
         print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
@@ -210,14 +214,15 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
 
+        # continue
         ################################## DEBUG ########################################
         # training_data_color = copy.deepcopy(round_two_datasets['color']['train'])
         # trainloader_color = data.DataLoader(training_data_color, batch_size=args.train_batch, shuffle=True,
-        #                               num_workers=args.workers, worker_init_fn=seed_worker)
+        #                                     num_workers=args.workers, worker_init_fn=seed_worker)
         #
         # training_data_shape = copy.deepcopy(round_two_datasets['shape']['train'])
         # trainloader_shape = data.DataLoader(training_data_shape, batch_size=args.train_batch, shuffle=True,
-        #                               num_workers=args.workers, worker_init_fn=seed_worker)
+        #                                     num_workers=args.workers, worker_init_fn=seed_worker)
         #
         # # switch to evaluate mode
         # model.eval()
@@ -254,7 +259,7 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
         #     inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
         #     for i in range(10):
         #         show_image(inputs[i].cpu(), outputs[i].cpu())
-
+        #
         #     plt.close('all')
         #
         #     # compute output
@@ -281,6 +286,10 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
 
         step = args.max_r/args.r_levels
         for r in torch.arange(step, args.max_r+step, step):
+
+        # myrange = torch.arange(step, args.max_r + step, step).tolist()
+        # for r in myrange[::-1]:
+
             losses = []
             accs = []
             for si in range(args.samples_no):
@@ -349,15 +358,15 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='vit',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='ffnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
                              ' (default: resnet20)')
     parser.add_argument('--depth', type=int, default=20, help='Model depth.')
-    parser.add_argument('--max_r', default=1., type=int, help='max radiuses')
+    parser.add_argument('--max_r', default=300., type=int, help='max radiuses')
     parser.add_argument('--r_levels', default=50, type=int, help='max radius')
-    parser.add_argument('--samples_no', default=300, type=int, help='number of samples per radius')
+    parser.add_argument('--samples_no', default=100, type=int, help='number of samples per radius')
     # Miscs
     parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
     # nsml

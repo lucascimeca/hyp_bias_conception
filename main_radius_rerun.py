@@ -17,24 +17,10 @@ import sys
 import traceback
 
 import nsml
-import copy
 import models as models
 import copy
-import h5py
-import socket
-import os
 import sys
-import numpy as np
-import torchvision
-import utils.surf.mpi4pytorch as mpi
-
-from utils.surf import dataloader
-from utils.surf import evaluation
-import utils.surf.projection as proj
 from utils.surf import net_plotter
-from utils.surf import plot_2D
-from utils.surf import plot_1D
-from utils.surf import scheduler
 from models.convnet import ConvNet
 from models.resnet import ResNet
 from models.ffnet import FFNet
@@ -43,8 +29,6 @@ from nsml import GPU_NUM
 from nsml import PARALLEL_WORLD, PARALLEL_PORTS, MY_RANK
 from utils import AverageMeter, accuracy
 from utils.data_loader import *
-from torch.utils.tensorboard import SummaryWriter
-from tensorboard import program
 from utils.misc.simple_io import *
 from functools import partial
 
@@ -63,240 +47,16 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
-def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
-
-    # A flag for distributed setup
-    WORLD_SIZE = len(PARALLEL_WORLD)
-    if WORLD_SIZE > 1:  # distributed setup
-        master_addr = "tcp://{}:{}".format(PARALLEL_WORLD[0], PARALLEL_PORTS[0])
-        print("Initiating distributed process group... My rank is {}".format(MY_RANK))
-        dist.init_process_group(backend='gloo', init_method=master_addr, rank=MY_RANK, world_size=WORLD_SIZE)
-        args.train_batch //= WORLD_SIZE
-
-    #--------------------------------------------------------------------------
-    # Check plotting resolution
-    #--------------------------------------------------------------------------
-
-    files = get_filenames(DIRECTION_PRETRAINED_FOLDER, file_ending='pth')
-    for sample_file in files:
-        global best_acc, global_step
-
-        # Random seed
-        if args.manualSeed is None:
-            args.manualSeed = random.randint(1, 10000)
-        random.seed(args.manualSeed)
-        torch.manual_seed(args.manualSeed)
-        if use_cuda:
-            torch.cuda.manual_seed_all(args.manualSeed)
-
-
-        fs = sample_file.split('-')
-        arch = fs[0]
-        exp_key = fs[1]
-        sample_no = fs[2]
-        feature_to_augment = exp_key.split("_")[0]
-
-        #  -------------- DATA --------------------------
-        resize = None
-        if 'face' in args.dataset:
-            resize = (64, 64)
-
-        print('==> Preparing dataset dsprites ')
-        round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-            number_of_samples=5000,
-            features_variants=experiments[exp_key],
-            resize=resize,
-            train_split=1.,
-            valid_split=0.,
-        )
-
-        num_classes = dsc.no_of_feature_lvs
-
-        # create train dataset for main diagonal -- round one
-        training_data = round_one_dataset['train']
-
-        # augment with offdiagonal if necessary
-        if 'augmentation' in exp_key:
-            training_data.merge_new_dataset(round_two_datasets[feature_to_augment]['train'])  # main diag
-
-        print("Data Length: {}".format(len(training_data)))
-
-        # create train dataset for main diagonal -- round one
-        trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
-                                      shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
-
-        args.xmin, args.xmax, args.xnum = -1., 1., 51
-        args.ymin, args.ymax, args.ynum = -1., 1., 51
-
-        #  -------------- MODEL --------------------------
-        print("==> creating model '{}'".format(args.arch))
-        if 'color' in args.dataset or 'face' in args.dataset:
-            no_of_channels = 3
-        else:
-            no_of_channels = 1
-
-        if 'resnet' in args.arch:
-            model = ResNet(
-                num_classes=num_classes,
-                depth=args.depth,
-                no_of_channels=no_of_channels)
-        elif 'convnet' in args.arch:
-            model = ConvNet(
-                num_classes=num_classes,
-                no_of_channels=no_of_channels)
-        elif 'ffnet' in args.arch:
-            model = FFNet(
-                num_classes=num_classes,
-                no_of_channels=no_of_channels)
-        elif 'vit' in args.arch:
-            model = VisionTransformer(
-                img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
-                norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes,
-                in_chans=no_of_channels)
-        else:
-            raise NotImplementedError()
-
-        state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
-        state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
-        model.load_state_dict(state_dict_rex)
-
-        w = net_plotter.get_weights(model)  # initial parameters
-        s = copy.deepcopy(model.state_dict())  # deepcopy since state_dict are references
-
-        model = nn.DataParallel(model).to(DEVICE)
-        torch.no_grad()
-        # --------------------------------------------------------------------------
-        # Setup the direction file and the surface file
-        # --------------------------------------------------------------------------
-        if not folder_exists(DIRECTION_FILES_FOLDER):
-            folder_create(DIRECTION_FILES_FOLDER)
-        dir_file = DIRECTION_FILES_FOLDER + "/direction_{}_{}".format(exp_key, sample_no) # name the direction file
-
-        if rank == 0:
-            net_plotter.setup_direction2(dir_file, model)
-
-        args.raw_data = True
-        surf_file = net_plotter.name_surface_file2(args, dir_file)
-
-        if rank == 0:
-            net_plotter.setup_surface_file(args, surf_file, dir_file)
-
-        # wait until master has setup the direction file and surface file
-        mpi.barrier(comm)
-
-        # load directions
-        d = net_plotter.load_directions(dir_file)
-
-        # calculate the consine similarity of the two directions
-        if len(d) == 2 and rank == 0:
-            similarity = proj.cal_angle(proj.nplist_to_tensor(d[0]), proj.nplist_to_tensor(d[1]))
-            print('cosine similarity between x-axis and y-axis: %f' % similarity)
-
-
-        cudnn.benchmark = True
-        print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
-
-        nsml.bind(model=model)
-        if args.pause:
-            nsml.paused(scope=locals())
-
-
-        # ---- LOGS folder ----
-        exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
-        folder_create(exp_folder, exist_ok=True)
-        logs_folder = exp_folder
-
-        """
-            Calculate the loss values and accuracies of modified models in parallel
-            using MPI reduce.
-        """
-
-        f = h5py.File(surf_file, 'r+' if rank == 0 else 'r')
-        losses, accuracies = [], []
-        xcoordinates = f['xcoordinates'][:]
-        ycoordinates = f['ycoordinates'][:] if 'ycoordinates' in f.keys() else None
-
-        if 'train_loss' not in f.keys():
-            shape = xcoordinates.shape if ycoordinates is None else (len(xcoordinates), len(ycoordinates))
-            losses = -np.ones(shape=shape)
-            accuracies = -np.ones(shape=shape)
-            if rank == 0:
-                f['train_loss'] = losses
-                f['train_acc'] = accuracies
-        else:
-            losses = f['train_loss'][:]
-            accuracies = f['train_acc'][:]
-
-        # Generate a list of indices of 'losses' that need to be filled in.
-        # The coordinates of each unfilled index (with respect to the direction vectors
-        # stored in 'd') are stored in 'coords'.
-        inds, coords, inds_nums = scheduler.get_job_indices(losses, xcoordinates, ycoordinates, comm)
-
-        print('Computing %d values for rank %d' % (len(inds), rank))
-        start_time = time.time()
-        total_sync = 0.0
-
-        # optimizer = optim.Adam(model.parameters())
-        criterion = nn.CrossEntropyLoss()
-
-        # Loop over all uncalculated loss values
-        for count, ind in enumerate(inds):
-            # Get the coordinates of the loss value being calculated
-            coord = coords[count]
-
-            # Load the weights corresponding to those coordinates into the net
-            net_plotter.set_weights(model.module if torch.cuda.device_count() > 1 else model, w, d, coord)
-
-            # Record the time to compute the loss value
-            loss_start = time.time()
-
-            loss, acc = test(trainloader, model, criterion, save=False)
-
-            loss_compute_time = time.time() - loss_start
-
-            # Record the result in the local array
-            losses.ravel()[ind] = loss
-            accuracies.ravel()[ind] = acc
-
-            # Send updated plot data to the master node
-            syc_start = time.time()
-            losses = mpi.reduce_max(comm, losses)
-            accuracies = mpi.reduce_max(comm, accuracies)
-            syc_time = time.time() - syc_start
-            total_sync += syc_time
-
-            # Only the master node writes to the file - this avoids write conflicts
-            if rank == 0:
-                f['train_loss'][:] = losses
-                f['train_acc'][:] = accuracies
-                f.flush()
-
-            print('Evaluating rank %d  %d/%d  (%.1f%%)  coord=%s \t%s= %.3f \t%s=%.2f \ttime=%.2f \tsync=%.2f' % (
-                rank, count, len(inds), 100.0 * count / len(inds), str(coord), 'train_loss', loss,
-                'train_acc', acc, loss_compute_time, syc_time))
-
-        # This is only needed to make MPI run smoothly. If this process has less work than
-        # the rank0 process, then we need to keep calling reduce so the rank0 process doesn't block
-        for i in range(max(inds_nums) - len(inds)):
-            losses = mpi.reduce_max(comm, losses)
-            accuracies = mpi.reduce_max(comm, accuracies)
-
-        total_time = time.time() - start_time
-        print('Rank %d done!  Total time: %.2f Sync: %.2f' % (rank, total_time, total_sync))
-
-        f.close()
-
-
 def test(testloader, model, criterion, save=False, folder=''):
     global best_acc, global_step
     losses = AverageMeter()
     accuracies = AverageMeter()
     # switch to evaluate mode
-    model.train()
-    if save:
-        outputs_to_save = []
-        targets_to_save = []
-        indeces_to_save = []
+    model.eval()
+    # if save:
+    outputs_to_save = []
+    targets_to_save = []
+    indeces_to_save = []
 
     for batch_idx, (indeces, inputs, targets) in enumerate(testloader):
         inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
@@ -305,10 +65,10 @@ def test(testloader, model, criterion, save=False, folder=''):
         model.to(DEVICE)
         outputs = model(inputs)
 
-        if save:
-            outputs_to_save += [outputs.clone().detach().cpu()]
-            targets_to_save += [targets.clone().detach().cpu()]
-            indeces_to_save += [indeces.clone().detach().cpu()]
+        # if save:
+        outputs_to_save += [outputs.clone().detach().cpu()]
+        targets_to_save += [targets.clone().detach().cpu()]
+        indeces_to_save += [indeces.clone().detach().cpu()]
 
         loss = criterion(outputs, targets.squeeze())
         # measure accuracy and record loss
@@ -326,7 +86,7 @@ def test(testloader, model, criterion, save=False, folder=''):
                             targets=targets_to_save,
                             indeces=indeces_to_save)
 
-    return losses.avg, accuracies.avg
+    return losses.avg, accuracies.avg,
 
 
 def zipfolder(foldername, target_dir):
@@ -336,6 +96,261 @@ def zipfolder(foldername, target_dir):
         for file in files:
             fn = os.path.join(base, file)
             zipobj.write(fn, fn[rootlen:])
+
+
+def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=None):
+
+    # A flag for distributed setup
+    WORLD_SIZE = len(PARALLEL_WORLD)
+    if WORLD_SIZE > 1:  # distributed setup
+        master_addr = "tcp://{}:{}".format(PARALLEL_WORLD[0], PARALLEL_PORTS[0])
+        print("Initiating distributed process group... My rank is {}".format(MY_RANK))
+        dist.init_process_group(backend='gloo', init_method=master_addr, rank=MY_RANK, world_size=WORLD_SIZE)
+        args.train_batch //= WORLD_SIZE
+
+    if not folder_exists(DIRECTION_FILES_FOLDER):
+        folder_create(DIRECTION_FILES_FOLDER)
+
+    #  -------------- DATA --------------------------
+    resize = None
+    if 'face' in args.dataset:
+        resize = (64, 64)
+
+    print('==> Preparing dataset dsprites ')
+    round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
+        number_of_samples=args.datapoints,
+        features_variants=experiment_features,
+        resize=resize,
+        train_split=.7,
+        valid_split=0.3,
+    )
+    num_classes = dsc.no_of_feature_lvs
+
+    #--------------------------------------------------------------------------
+    # Check plotting resolution
+    #--------------------------------------------------------------------------
+    files = get_filenames(DIRECTION_PRETRAINED_FOLDER, file_ending='pth')
+    files = sorted(files, key=lambda x: x.split("-")[1])
+
+    tot_exp_no = len(files) * args.r_levels * args.samples_no
+    cnt = 0
+
+    for sample_file in files:
+        global best_acc, global_step
+
+        random.seed(args.manualSeed)
+        np.random.seed(args.manualSeed)
+        torch.manual_seed(args.manualSeed)
+        torch.cuda.manual_seed(args.manualSeed)
+        torch.cuda.manual_seed_all(args.manualSeed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+
+        fs = sample_file.split('-')
+        arch = fs[0]
+        exp_key = fs[1]
+        sample_no = fs[2]
+        feature_to_augment = exp_key.split("_")[0]
+
+        # create train dataset for main diagonal -- round one
+        training_data = copy.deepcopy(round_one_dataset['train'])
+        print("Data Length: {}".format(len(training_data)))
+
+        # create train dataset for main diagonal -- round one
+        trainloader = data.DataLoader(training_data,
+                                      batch_size=args.train_batch,
+                                      shuffle=True,
+                                      num_workers=args.workers,
+                                      worker_init_fn=seed_worker)
+
+        # create dataset for off diagonal, depending on task -- round two
+        testloaders = {"round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
+                                                                            batch_size=args.test_batch,
+                                                                            shuffle=True,
+                                                                            num_workers=args.workers,
+                                                                            worker_init_fn=seed_worker)
+                       for feature in round_two_datasets.keys()}
+
+        #  -------------- MODEL --------------------------
+        print("==> creating model '{}'".format(args.arch))
+        if 'color' in args.dataset or 'face' in args.dataset:
+            no_of_channels = 3
+        else:
+            no_of_channels = 1
+
+        if args.arch.endswith('resnet'):
+            model = ResNet(
+                num_classes=num_classes,
+                depth=args.depth,
+                no_of_channels=no_of_channels)
+            optimizer = optim.Adam(model.parameters())
+        elif args.arch.endswith('convnet'):
+            model = ConvNet(
+                num_classes=num_classes,
+                no_of_channels=no_of_channels)
+            optimizer = optim.Adam(model.parameters(),
+                                   weight_decay=1e-3)
+        elif args.arch.endswith('ffnet'):
+            model = FFNet(
+                num_classes=num_classes,
+                no_of_channels=no_of_channels)
+            optimizer = optim.Adam(model.parameters())
+        elif args.arch.endswith('vit'):
+            model = VisionTransformer(
+                img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
+                norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes, in_chans=no_of_channels)
+            optimizer = optim.SGD(model.parameters(),
+                                  lr=5e-3,
+                                  momentum=0.9,
+                                  weight_decay=1e-4)
+        else:
+            raise NotImplementedError()
+
+        state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
+        state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
+        model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
+
+        # torch.no_grad()
+
+        nsml.bind(model=model)
+        if args.pause:
+            nsml.paused(scope=locals())
+
+        # ---- LOGS folder ----
+        exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
+        folder_create(exp_folder, exist_ok=True)
+        logs_folder = exp_folder
+
+        print("\n########### Experiment Set: {} of {}, sample_file: {} ###########\n".format(exp_key,
+                                                                                             experiment_features,
+                                                                                             sample_file))
+
+        cudnn.benchmark = True
+        print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
+
+        criterion = nn.CrossEntropyLoss()
+        weights = copy.deepcopy(net_plotter.get_weights(model))  # initial parameters
+
+        weights_length = 0
+        for p in model.parameters():
+            weights_length += torch.prod(torch.tensor(p.shape))
+
+        random_params = torch.zeros((1, weights_length))
+
+        step = args.max_r/args.r_levels
+        for si in range(args.samples_no):
+            start_time = time.time()
+            radiuses = []
+            test_by_feature = {}
+
+            for r in torch.arange(step, args.max_r+step, step):
+                losses = []
+                accs = []
+
+                # generate random parameters for radius r
+                random_params[0, :] = torch.randn(weights_length)
+                norm = torch.norm(random_params, dim=1)
+                random_params /= norm
+                random_params *= r
+
+                w_idx = 0
+                for (p, w) in zip(model.parameters(), weights):
+                    n_of_weights = torch.prod(torch.tensor(p.shape))
+                    p.data = w + random_params[0, w_idx:w_idx+n_of_weights].view(p.shape).type(type(w))
+                    w_idx += n_of_weights
+
+                model = nn.DataParallel(model).to(DEVICE)
+                #################################################################################
+
+                # Train and val on generated parameters
+
+                best_accuracies = {}  # best test accuracy
+                best_loss = None
+                best_acc = None
+                best_epoch = None
+                start_time = time.time()
+                patience_cnt = 0
+                weight_states_to_save = None
+                zero_loss = False
+                found_candidate = False
+                for epoch in range(args.epochs):
+
+                    # adjust_learning_rate(optimizer, epoch, args)
+                    print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
+                    losses = AverageMeter()
+                    accuracies = AverageMeter()
+                    for batch_idx, (_, inputs, targets) in enumerate(trainloader):
+                        model.train()
+                        global_step += 1
+                        inputs, targets = inputs.cuda(), targets.cuda(non_blocking=True)
+                        inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
+
+                        # compute output
+                        outputs = model(inputs)
+                        loss = criterion(outputs, targets.view(targets.size()[:-1]))
+                        # measure accuracy and record loss
+                        acc, = accuracy(outputs.data, targets.data)
+                        losses.update(loss.data.item(), inputs.size(0))
+                        accuracies.update(acc.item(), inputs.size(0))
+
+                        # compute gradient and do SGD step
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        # report result
+
+                        nsml.report(
+                            epoch=epoch,
+                            step=time.time() - start_time,
+                            scope=dict(scope, **locals()),
+                            train__top1_acc=acc.item(),
+                            train__loss=loss.data.item()
+                        )
+
+                    # if any task improved then save
+
+                    # compute test (train) loss - with current (stationary) weights (no Gradient Descent)
+                    test_reports_loss = {}
+                    test_reports_acc = {}
+                    update = False
+                    for task in testloaders.keys():
+                        folder = "{}{}/".format(logs_folder, task)
+                        test_loss, test_acc = test(testloaders[task], model, criterion, folder=folder)
+                        test_reports_loss['test__loss_' + task] = test_loss
+                        test_reports_acc['test__acc_' + task] = test_acc
+                        if test_acc == 100:
+                            break
+
+                        if task not in best_accuracies.keys() or test_acc > best_accuracies[task]:
+                            best_accuracies[task] = test_acc
+                            # if it is the best, save
+                            update = True
+
+                        print("{} {}, BEST {}".format(task, test_acc, best_accuracies[task]))
+
+                    if not update:
+                        patience_cnt += 1
+                    else:
+                        patience_cnt = 0
+                        nsml.save(global_step)
+
+                    if patience_cnt >= args.patience or epoch == args.epochs - 1:
+                        break
+
+                radiuses.append(r)
+                for key in test_reports_acc.keys():
+                    if key not in test_by_feature:
+                        test_by_feature[key] = [test_reports_acc[key]]
+                    else:
+                        test_by_feature[key].append(test_reports_acc[key])
+
+                #################################################################################
+
+            np.savez_compressed("{}predictions_{}".format(logs_folder, si),
+                                radiuses=radiuses,
+                                **test_by_feature)
+
+
 
 
 if __name__ == '__main__':
@@ -350,7 +365,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
-    parser.add_argument('--epochs', default=25, type=int, metavar='N',
+    parser.add_argument('--epochs', default=50, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')
@@ -374,6 +389,12 @@ if __name__ == '__main__':
                              ' | '.join(model_names) +
                              ' (default: resnet20)')
     parser.add_argument('--depth', type=int, default=20, help='Model depth.')
+    parser.add_argument('--max_r', default=50., type=int, help='max radiuses')
+    parser.add_argument('--r_levels', default=200, type=int, help='max radius')
+    parser.add_argument('--samples_no', default=1, type=int, help='number of samples per radius')
+    parser.add_argument('--datapoints', default=6500, type=int)
+    parser.add_argument('--patience', '--early-stopping-patience', default=15, type=float,
+                        metavar='Patience', help='Early Stopping Dropout Patience')
     # Miscs
     parser.add_argument('--manualSeed', default=123, type=int, help='manual seed')
     # nsml
@@ -386,38 +407,18 @@ if __name__ == '__main__':
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0
 
-    comm, rank, nproc = None, 0, 1
-
-    # in case of multiple GPUs per node, set the GPU to use for each rank
-    # if args.cuda:
-    if not torch.cuda.is_available():
-        raise Exception('User selected cuda option, but cuda is not available on this machine')
-    gpu_count = torch.cuda.device_count()
-    torch.cuda.set_device(rank % gpu_count)
-    print('Rank %d use GPU %d of %d GPUs on %s' %
-          (rank, torch.cuda.current_device(), gpu_count, socket.gethostname()))
-
     # experiments
     if 'color' in args.dataset:
         # experiments
-        experiments = {
-            "shape_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "scale_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "orientation_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "color_augmentation": ('shape', 'scale', 'orientation', 'color'),
-            "diagonal": ('shape', 'scale', 'orientation', 'color'),
-        }
+        experiment_keys = ["shape_augmentation", "scale_augmentation", "orientation_augmentation", "color_augmentation", "diagonal"]
+        experiment_features = ['shape', 'scale', 'orientation', 'color']
         dsc = ColorDSpritesCreator(
             data_path='./data/',
             filename="color_dsprites_pruned.h5"
         )
     elif 'face' in args.dataset:
-        experiments = {
-            "age_augmentation": ('age', 'gender', 'ethnicity'),
-            "gender_augmentation": ('age', 'gender', 'ethnicity'),
-            "ethnicity_augmentation": ('age', 'gender', 'ethnicity'),
-            "diagonal": ('age', 'gender', 'ethnicity')
-        }
+        experiment_keys = ["age_augmentation", "gender_augmentation", "ethnicity_augmentation", "diagonal"]
+        experiment_features = ['age', 'gender', 'ethnicity']
         dsc = UTKFaceCreator(
             data_path='./data/',
             filename='UTKFace.h5'
@@ -427,9 +428,9 @@ if __name__ == '__main__':
 
     try:
         run_experiment(args,
-                       experiments=experiments,
+                       experiment_keys=experiment_keys,
+                       experiment_features=experiment_features,
                        dsc=dsc,
-                       samples=100,
                        scope=locals())
         print("done")
 
@@ -439,6 +440,6 @@ if __name__ == '__main__':
 
     finally:
         print("saving zip...")
-        zipfolder("runs", DIRECTION_FILES_FOLDER)
+        zipfolder("runs", TENSORBOARD_FOLDER)
         traceback.print_exc()
         sys.exit()

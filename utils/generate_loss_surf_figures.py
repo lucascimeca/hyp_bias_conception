@@ -31,9 +31,9 @@ def plot_spherical_rs(folder, cutoff=None, log_scale=False, type='loss', color_d
 
         fig = plt.figure(figsize=(7, 4))
         ax = fig.add_subplot(111)
-        plt.title("{} by spherical r".format(type.capitalize()))
-        ax.set_xlabel("r")
-        ax.set_ylabel(type)
+        plt.title("{} by radial distance".format(type.capitalize()), fontsize=14)
+        ax.set_xlabel("Weight off-set radius (r)", fontsize=14)
+        ax.set_ylabel(type.capitalize(), fontsize=14)
 
         for file in files_sphere:
             filepath = DIRECTION_FILES_FOLDER + file
@@ -56,23 +56,27 @@ def plot_spherical_rs(folder, cutoff=None, log_scale=False, type='loss', color_d
             else:
                 ys_std = np.sqrt(ys.std(axis=1))/ys.shape[1]
 
-            ax.plot(local_rs[local_rs < cutoff], ys_avg, label=task_name,
-                    color=color_dict[task_name])
+            ax.plot(local_rs[local_rs < cutoff], ys_avg,
+                    label=task_name.capitalize(),
+                    color=color_dict[task_name],
+                    marker='*',
+                    linewidth=2)
             ax.fill_between(local_rs[local_rs < cutoff], ys_avg + ys_std, ys_avg - ys_std,
                             facecolor=color_dict[task_name], alpha=0.35)
 
         if log_scale:
             plt.yscale("log")
 
-        plt.legend()
+        plt.legend(fontsize=14)
         plt.show()
 
 
 
 if __name__ == '__main__':
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=3, type='loss', color_dict=feature_to_color_dict, deviation=False)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=3, type='loss', color_dict=feature_to_color_dict, deviation=True)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=3, type='accuracy', color_dict=feature_to_color_dict)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='loss', color_dict=feature_to_color_dict, deviation=False)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='loss', color_dict=feature_to_color_dict, deviation=True)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='accuracy', color_dict=feature_to_color_dict, deviation=False)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='accuracy', color_dict=feature_to_color_dict, deviation=True)
 
     files = get_filenames(DIRECTION_FILES_FOLDER)
     files_plane = [file for file in files if 'data' in file and file.endswith("h5")]

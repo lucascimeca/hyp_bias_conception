@@ -31,6 +31,17 @@ NSML COMMANDS
 - nsml run -e main_sphere_test.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 
+# --- mode connectivity code
+
+- nsml run -e main_mode_connectivity.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_mode_connectivity.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+
+# --- feature radius rerun code
+
+- nsml run -e main_radius_rerun.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_radius_rerun.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+
+
 # to retrieve tflogs 							  
 - nsml download KR95157/ColorDSpritesPruned/26 Downloads -s /app/runs.zip
 - nsml download KR95157/UTKFace/26 Downloads -s /app/runs.zip
