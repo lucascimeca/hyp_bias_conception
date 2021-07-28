@@ -12,7 +12,7 @@ from os.path import exists
 import seaborn as sns
 
 
-def plot_2d_contour(surf_file, surf_name='train_loss', vmin=0.1, vmax=10, vlevel=0.5, show=False):
+def plot_2d_contour(surf_file, surf_name='train_loss', vmin=0.1, vmax=10, vlevel=0.5, show=False, title=""):
     """Plot 2D contour map and 3D surface."""
 
     f = h5py.File(surf_file, 'r')
@@ -43,10 +43,12 @@ def plot_2d_contour(surf_file, surf_name='train_loss', vmin=0.1, vmax=10, vlevel
     # Plot 2D contours
     # --------------------------------------------------------------------
     fig = plt.figure()
+    plt.title(title)
     CS = plt.contour(X, Y, Z, cmap='summer', levels=np.arange(vmin, vmax, vlevel))
     plt.clabel(CS, inline=1, fontsize=8)
     fig.savefig(surf_file + '_' + surf_name + '_2dcontour' + '.pdf', dpi=300,
                 bbox_inches='tight', format='pdf')
+    fig.show()
 
     fig = plt.figure()
     print(surf_file + '_' + surf_name + '_2dcontourf' + '.pdf')
@@ -75,7 +77,9 @@ def plot_2d_contour(surf_file, surf_name='train_loss', vmin=0.1, vmax=10, vlevel
                 bbox_inches='tight', format='pdf')
 
     f.close()
-    if show: plt.show()
+
+    if show:
+        plt.show()
 
 
 def plot_trajectory(proj_file, dir_file, show=False):

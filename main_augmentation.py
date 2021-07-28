@@ -332,7 +332,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi, multicolor and face supported')
+    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi, multicolor and face supported')
     # Optimization options
     parser.add_argument('--epochs', default=2000, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='ffnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

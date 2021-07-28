@@ -214,7 +214,7 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
 
-        # continue
+        continue
         ################################## DEBUG ########################################
         # training_data_color = copy.deepcopy(round_two_datasets['color']['train'])
         # trainloader_color = data.DataLoader(training_data_color, batch_size=args.train_batch, shuffle=True,
@@ -358,7 +358,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='ffnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

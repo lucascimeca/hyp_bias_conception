@@ -7,7 +7,7 @@ RESULTS_FOLDER = "./../results/generated/"
 
 # ARCHITECTURE = "resnet"
 # ARCHITECTURE = "fft"
-ARCHITECTURE = "vit"
+ARCHITECTURE = "resnet"
 PLOT_TRAIN_LOSS = False
 PLOT_TRAIN_ACC = True
 PLOT_VALID_ACC = True
@@ -30,8 +30,8 @@ feature_to_color_dict = {
 
 
 
-def plot_shades(all_xs_data, all_ys_data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_parameter=0.6, cap=20,
-                type='acc', smoothing=True, ylim=None):
+def plot_shades(all_xs_data, all_ys_data, title='Loss', x_label='Epoch', y_label='Loss', smoothing_parameter=0.6,
+                cap=None, type='acc', smoothing=True, ylim=None):
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
 
@@ -64,10 +64,14 @@ def plot_shades(all_xs_data, all_ys_data, title='Loss', x_label='Epoch', y_label
         ys_max = ys_avg + ys_std
         ys_min = ys_avg - ys_std
 
+        if cap is None:
+            cap = np.max(xs) + 1
         ax.plot(xs[xs < cap],
                 ys_avg[xs < cap],
                 label="{} avg. {} $\\pm \\sigma$".format(task_name, type),
-                color=feature_to_color_dict[task_name])
+                color=feature_to_color_dict[task_name],
+                marker='*',
+                linewidth=2)
         ax.fill_between(xs[xs < cap],
                         ys_max[xs < cap],
                         ys_min[xs < cap],
@@ -75,7 +79,7 @@ def plot_shades(all_xs_data, all_ys_data, title='Loss', x_label='Epoch', y_label
                         alpha=0.35)
 
         if task_name != "":
-            text_labels.append([xs[xs < cap][-7], ys_avg[xs < cap][-7]+2, task_name])
+            text_labels.append([xs[xs < cap][-10], ys_avg[xs < cap][-10]+2, task_name])
 
     text_labels = sorted(text_labels, key=lambda x: x[1], reverse=True)
     text_ys = [x[1] for x in text_labels]
@@ -95,11 +99,10 @@ def plot_shades(all_xs_data, all_ys_data, title='Loss', x_label='Epoch', y_label
     ax.grid()
 
     plt.show()
-    # if 'test' in title.lower():
-    #     fig.savefig(os.path.join(RESULTS_FOLDER, '{}_training_comparison_{}.pdf'.format(ARCHITECTURE, title.split(" ")[0])),
-    #                 format='pdf',
-    #                 dpi=300,
-    #                 bbox_inches='tight')
+    fig.savefig(os.path.join(RESULTS_FOLDER, '{}_radius_rerun_{}.pdf'.format(ARCHITECTURE, feature)),
+                format='pdf',
+                dpi=300,
+                bbox_inches='tight')
 
 
 
@@ -134,7 +137,7 @@ if __name__ == "__main__":
                     all_ys_data[key].append(file_data[key])
                     all_xs_data[key].append(file_data['radiuses'])
 
-        plot_shades(all_xs_data, all_ys_data)
+        plot_shades(all_xs_data, all_ys_data, cap=None)
 
         # fig = plt.figure(figsize=(7, 4))
         # ax = fig.add_subplot(111)

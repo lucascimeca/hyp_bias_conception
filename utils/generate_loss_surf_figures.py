@@ -40,6 +40,10 @@ def plot_spherical_rs(folder, cutoff=None, log_scale=False, type='loss', color_d
             data = np.load(filepath)
 
             task_name = file.split('-')[0].split("_")[0]
+
+            if "diag" in task_name:
+                continue
+
             local_rs = data['local_rs']
 
             if cutoff is None:
@@ -73,15 +77,15 @@ def plot_spherical_rs(folder, cutoff=None, log_scale=False, type='loss', color_d
 
 
 if __name__ == '__main__':
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='loss', color_dict=feature_to_color_dict, deviation=False)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='loss', color_dict=feature_to_color_dict, deviation=True)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='accuracy', color_dict=feature_to_color_dict, deviation=False)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=150, type='accuracy', color_dict=feature_to_color_dict, deviation=True)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='loss', color_dict=feature_to_color_dict, deviation=False)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='loss', color_dict=feature_to_color_dict, deviation=True)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='accuracy', color_dict=feature_to_color_dict, deviation=False)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='accuracy', color_dict=feature_to_color_dict, deviation=True)
 
     files = get_filenames(DIRECTION_FILES_FOLDER)
     files_plane = [file for file in files if 'data' in file and file.endswith("h5")]
     for file in files_plane:
         filepath = DIRECTION_FILES_FOLDER + file
-        plot_2d_contour(filepath, surf_name='train_loss', vmin=0.0, vmax=1., vlevel=0.02, show=False)
+        plot_2d_contour(filepath, surf_name='train_loss', vmin=0.0, vmax=2., vlevel=0.08, show=False, title=file.split("_")[1])
         # h5_to_vtp(filepath, surf_name='train_loss', log=True, zmax=10., interp=1000)
         # plot_2d_contour(filepath, surf_name='train_acc', vmin=30.0, vmax=101., vlevel=5.0, show=False)

@@ -522,10 +522,13 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
 
             # k are the number of bends
             for smpl, k in [(sample_from, 0), (sample_to, 2)]:
+                try:
+                    state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + smpl)
+                    state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
+                    base_model.load_state_dict(state_dict_rex)  # deepcopy since state_dict are references
 
-                state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + smpl)
-                state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
-                base_model.load_state_dict(state_dict_rex)
+                except Exception as e:
+                    base_model = torch.load(DIRECTION_PRETRAINED_FOLDER + smpl)
 
                 print('Loading {} as point {}'.format(smpl, k))
                 model.import_base_parameters(base_model, k)
@@ -653,7 +656,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -673,7 +676,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='ffnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +

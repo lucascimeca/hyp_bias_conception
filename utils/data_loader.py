@@ -82,9 +82,9 @@ class FeatureDataset(Dataset):
 
     def _create_labels(self):
         self.labels = np.zeros((self.classes.shape[0]))-1
-        if self.latent_type[self.feature] == 'ord':
+        if self.latent_type[self.feature] == 'ord' or (self.feature == 'ethnicity' and self.no_of_feature_lvs == 2):
             for lv in range(self.no_of_feature_lvs):
-                same_cell_condition = np.logical_and(self.classes[:, self.latent_to_idx[self.feature]] > self.task_dict[self.feature][lv], self.classes[:, self.latent_to_idx[self.feature]] <= self.task_dict[self.feature][lv+1])
+                same_cell_condition = np.logical_and(self.classes[:, self.latent_to_idx[self.feature]] >= self.task_dict[self.feature][lv], self.classes[:, self.latent_to_idx[self.feature]] < self.task_dict[self.feature][lv+1])
                 self.labels[same_cell_condition] = lv
         else:
             for lv in range(self.no_of_feature_lvs):
@@ -359,6 +359,7 @@ class FeatureCombinationCreator:
         # create feature levels (for relabeling), different behaviour depending if 'categorical' or 'ordinal' variable
         for feature in self.task_dict.keys():
             # if it's an ordinal variable, then make a balanced range
+
             if self.latent_type[feature] == 'ord':
                 print('## creating range for variable: {}...'.format(feature))
                 lvs = [0]
@@ -371,8 +372,8 @@ class FeatureCombinationCreator:
                     prev_score = 1.
                     best_idx = 0
                     percent = 100
-                    for cut_off_idx in range(lvs[-1]+1, self.latents_sizes[self.latent_to_idx[feature]]):
-                        obj_cnt = np.logical_and(self.latents_classes[:, self.latent_to_idx[feature]] > lvs[-1], self.latents_classes[:, self.latent_to_idx[feature]] <= cut_off_idx).astype(int).sum()
+                    for cut_off_idx in range(lvs[-1]+1, self.latents_sizes[self.latent_to_idx[feature]]+1):
+                        obj_cnt = np.logical_and(self.latents_classes[:, self.latent_to_idx[feature]] >= lvs[-1], self.latents_classes[:, self.latent_to_idx[feature]] < cut_off_idx).astype(int).sum()
                         # lower score is better (more balance dateset)
                         score = abs(obj_cnt-balance_mark)
                         if score < best_score:
@@ -386,7 +387,7 @@ class FeatureCombinationCreator:
                     lvs.append(best_idx)
 
                 self.task_dict[feature] = lvs
-                print("cutoffs for {} found at {}".format(feature, lvs[1:]))
+                print("cutoffs for {} found at {}".format(feature, lvs[1:-1]))
                 print("percents for {} found at [".format(feature), end="")
                 for percent in percents[:-1]:
                     print("{:.2f}".format(percent), end=", ")
@@ -394,17 +395,32 @@ class FeatureCombinationCreator:
 
             # if it's a categorical, then just pick them linearly
             else:
-                self.task_dict[feature] = [round(x) for x in
-                                           np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
-                                                       self.no_of_feature_lvs, )]
+                # special treatment to ethnicity if we only  have to classes, to ensure white vs non-white classification test
+                if feature == 'ethnicity' and self.no_of_feature_lvs == 2:
+                    lvs = [0, 1, 5]
+                    self.task_dict[feature] = lvs
+                    print("cutoffs for {} found at {}".format(feature, lvs[1:-1]))
+                else:
+                    class_elements = []
+                    for class_label in range(self.latents_sizes[self.latent_to_idx[feature]]):
+                        no_of_elements = (self.latents_classes[:, self.latent_to_idx[feature]] == class_label).astype(np.int).sum()
+                        class_elements.append((class_label, no_of_elements))
+
+                    class_elements = sorted(class_elements, key=lambda x: x[1], reverse=True)
+
+                    self.task_dict[feature] = [x[0] for x in class_elements[:self.no_of_feature_lvs]]
+
+                # self.task_dict[feature] = [round(x) for x in
+                #                            np.linspace(0, self.latents_sizes[self.latent_to_idx[feature]] - 1,
+                #                                        self.no_of_feature_lvs, )]
 
         # first train set is the feature combination matrix diagonal (linearize booleans for faster conditioning)
         diag_condition = np.array([False] * self.dataset['imgs'].shape[0])  # initialize boolens for "OR" chain
         for lv in range(self.no_of_feature_lvs):
             same_cell_condition = np.array([True] * self.dataset['imgs'].shape[0])  # initialize boolens for "AND" chain
             for feature in self.feature_variants:
-                if self.latent_type[feature] == 'ord':
-                    same_cell_condition &= np.logical_and(all_latent_classes[:, self.latent_to_idx[feature]] > self.task_dict[feature][lv], all_latent_classes[:, self.latent_to_idx[feature]] <= self.task_dict[feature][lv+1])   # AND
+                if self.latent_type[feature] == 'ord' or (feature == 'ethnicity' and self.no_of_feature_lvs == 2):
+                    same_cell_condition &= np.logical_and(all_latent_classes[:, self.latent_to_idx[feature]] >= self.task_dict[feature][lv], all_latent_classes[:, self.latent_to_idx[feature]] < self.task_dict[feature][lv+1])   # AND
                 else:
                     same_cell_condition &= all_latent_classes[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # AND
             diag_condition |= same_cell_condition
@@ -416,8 +432,8 @@ class FeatureCombinationCreator:
         for feature in self.feature_variants:
             offdiag_condition = np.array([False] * self.dataset['imgs'].shape[0])
             for lv in range(self.no_of_feature_lvs):
-                if self.latent_type[feature] == 'ord':
-                    offdiag_condition |= np.logical_and(all_latent_classes[:, self.latent_to_idx[feature]] > self.task_dict[feature][lv], all_latent_classes[:, self.latent_to_idx[feature]] <= self.task_dict[feature][lv+1])  # OR
+                if self.latent_type[feature] == 'ord' or (feature == 'ethnicity' and self.no_of_feature_lvs == 2):
+                    offdiag_condition |= np.logical_and(all_latent_classes[:, self.latent_to_idx[feature]] >= self.task_dict[feature][lv], all_latent_classes[:, self.latent_to_idx[feature]] < self.task_dict[feature][lv+1])  # OR
                 else:
                     offdiag_condition |= all_latent_classes[:, self.latent_to_idx[feature]] == self.task_dict[feature][lv]  # OR
 

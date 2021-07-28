@@ -58,7 +58,7 @@ dsc.show_tasks()
 dsc = UTKFaceCreator(data_path='./../data/', filename='UTKFace.h5')
 dsc.get_dataset_fvar(
     number_of_samples=10000,
-    features_variants=('ethnicity', 'age'),
+    features_variants=('ethnicity', 'age', 'gender'),
     resize=(64, 64),
     train_split=1.,
     valid_split=0.

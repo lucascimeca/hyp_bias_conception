@@ -116,8 +116,8 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         training_data = round_one_dataset['train']
 
         # augment with offdiagonal if necessary
-        if 'augmentation' in exp_key:
-            training_data.merge_new_dataset(round_two_datasets[feature_to_augment]['train'])  # main diag
+        # if 'augmentation' in exp_key:
+        #     training_data.merge_new_dataset(round_two_datasets[feature_to_augment]['train'])  # main diag
 
         print("Data Length: {}".format(len(training_data)))
 
@@ -125,8 +125,8 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
                                       shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
 
-        args.xmin, args.xmax, args.xnum = -1., 1., 51
-        args.ymin, args.ymax, args.ynum = -1., 1., 51
+        args.xmin, args.xmax, args.xnum = -3., 3., 51
+        args.ymin, args.ymax, args.ynum = -3., 3., 51
 
         #  -------------- MODEL --------------------------
         print("==> creating model '{}'".format(args.arch))
@@ -156,9 +156,13 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         else:
             raise NotImplementedError()
 
-        state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
-        state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
-        model.load_state_dict(state_dict_rex)
+        try:
+            state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
+            state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
+            model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
+
+        except Exception as e:
+            model = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
 
         w = net_plotter.get_weights(model)  # initial parameters
         s = copy.deepcopy(model.state_dict())  # deepcopy since state_dict are references

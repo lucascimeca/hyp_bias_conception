@@ -9,7 +9,7 @@ RESULTS_FOLDER = "./../results/generated/"
 # ARCHITECTURE = "fft"
 ARCHITECTURE = "vit"
 PLOT_TRAIN_LOSS = False
-PLOT_TRAIN_ACC = True
+PLOT_TRAIN_ACC = False
 PLOT_VALID_ACC = True
 
 

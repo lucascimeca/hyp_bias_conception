@@ -206,9 +206,13 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
         else:
             raise NotImplementedError()
 
-        state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
-        state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
-        model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
+        try:
+            state_dict = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
+            state_dict_rex = {key[7:]: state_dict[key] for key in state_dict.keys()}
+            model.load_state_dict(state_dict_rex)# deepcopy since state_dict are references
+
+        except Exception as e:
+            model = torch.load(DIRECTION_PRETRAINED_FOLDER + sample_file)
 
         # torch.no_grad()
 
@@ -307,11 +311,13 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
                             train__loss=loss.data.item()
                         )
 
-                    # if any task improved then save
-
                     # compute test (train) loss - with current (stationary) weights (no Gradient Descent)
                     test_reports_loss = {}
                     test_reports_acc = {}
+
+                    test_reports_loss['train__loss_diag'] = losses.avg
+                    test_reports_acc['train__acc_diag'] = accuracies.avg
+
                     update = False
                     for task in testloaders.keys():
                         folder = "{}{}/".format(logs_folder, task)
@@ -344,6 +350,12 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
                     else:
                         test_by_feature[key].append(test_reports_acc[key])
 
+                for key in test_reports_loss.keys():
+                    if key not in test_by_feature:
+                        test_by_feature[key] = [test_reports_loss[key]]
+                    else:
+                        test_by_feature[key].append(test_reports_loss[key])
+
                 #################################################################################
 
             np.savez_compressed("{}predictions_{}".format(logs_folder, si),
@@ -363,7 +375,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=50, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -389,8 +401,8 @@ if __name__ == '__main__':
                              ' | '.join(model_names) +
                              ' (default: resnet20)')
     parser.add_argument('--depth', type=int, default=20, help='Model depth.')
-    parser.add_argument('--max_r', default=50., type=int, help='max radiuses')
-    parser.add_argument('--r_levels', default=200, type=int, help='max radius')
+    parser.add_argument('--max_r', default=200., type=int, help='max radiuses')
+    parser.add_argument('--r_levels', default=30, type=int, help='max radius')
     parser.add_argument('--samples_no', default=1, type=int, help='number of samples per radius')
     parser.add_argument('--datapoints', default=6500, type=int)
     parser.add_argument('--patience', '--early-stopping-patience', default=15, type=float,
