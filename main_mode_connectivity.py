@@ -507,8 +507,8 @@ def run_experiment(args, experiments=None, dsc=None, scope=None):
             torch.cuda.manual_seed(SEED)
 
             args.num_bends = 3
-            args.fix_start = True
-            args.fix_end = True
+            args.fix_start = False
+            args.fix_end = False
             curve = curves.Bezier
             model = curves.CurveNet(
                 num_classes,
@@ -658,7 +658,7 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
-    parser.add_argument('--epochs', default=200, type=int, metavar='N',
+    parser.add_argument('--epochs', default=300, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--train-batch', default=256, type=int, metavar='N',
                         help='train batchsize')

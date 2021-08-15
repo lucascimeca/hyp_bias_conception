@@ -54,3 +54,43 @@ def ffnet(**kwargs):
     Constructs a ConvNet model.
     """
     return FFNet(**kwargs)
+
+
+class FFNetTest(nn.Module):
+
+    def __init__(self, num_classes=1000, no_of_channels=1, depth=4):
+        super(FFNetTest, self).__init__()
+        self.depth = depth
+        self.in_layer = nn.Linear(no_of_channels*64*64, 10)
+        self.mid_layer = nn.Linear(10, 10)
+        self.out_layer = nn.Linear(10, num_classes)
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def forward(self, x):
+        # Max pooling over a (2, 2) window
+        x = x.view(-1, self.num_flat_features(x))
+        x = F.relu(self.in_layer(x))
+        for i in range(self.depth):
+            x = F.relu(self.mid_layer(x))
+        x = self.out_layer(x)
+        return x
+
+    def num_flat_features(self, x):
+        size = x.size()[1:]  # all dimensions except the batch dimension
+        num_features = 1
+        for s in size:
+            num_features *= s
+        return num_features
+
+
+def ffnettest(**kwargs):
+    """
+    Constructs a ConvNet model.
+    """
+    return FFNetTest(**kwargs)

@@ -8,6 +8,7 @@ from utils.misc.simple_io import *
 TENSORBOARD_FOLDER = "./runs/"
 DIRECTION_FILES_FOLDER = "../models/pretrained/direction_files/"
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+RESULTS_FOLDER = "./../results/generated/"
 
 feature_to_color_dict = {
     "diagonal": '#e52592',
@@ -74,18 +75,25 @@ def plot_spherical_rs(folder, cutoff=None, log_scale=False, type='loss', color_d
         plt.legend(fontsize=14)
         plt.show()
 
+        fig.savefig(RESULTS_FOLDER + 'radius_curve_test' + type + '.pdf', dpi=300, bbox_inches='tight', format='pdf')
+
 
 
 if __name__ == '__main__':
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='loss', color_dict=feature_to_color_dict, deviation=False)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='loss', color_dict=feature_to_color_dict, deviation=True)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='accuracy', color_dict=feature_to_color_dict, deviation=False)
-    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=200, type='accuracy', color_dict=feature_to_color_dict, deviation=True)
+    plot_spherical_rs(DIRECTION_FILES_FOLDER, cutoff=140, type='loss', color_dict=feature_to_color_dict, deviation=False)
 
-    files = get_filenames(DIRECTION_FILES_FOLDER)
-    files_plane = [file for file in files if 'data' in file and file.endswith("h5")]
-    for file in files_plane:
-        filepath = DIRECTION_FILES_FOLDER + file
-        plot_2d_contour(filepath, surf_name='train_loss', vmin=0.0, vmax=2., vlevel=0.08, show=False, title=file.split("_")[1])
-        # h5_to_vtp(filepath, surf_name='train_loss', log=True, zmax=10., interp=1000)
+    # files = get_filenames(DIRECTION_FILES_FOLDER)
+    # files_plane = [file for file in files if 'data' in file and file.endswith("h5")]
+    # for file in files_plane:
+    #     filepath = DIRECTION_FILES_FOLDER + file
+    #     plot_2d_contour(filepath, surf_name='train_loss', vmin=0.0, vmax=1., vlevel=0.02, show=False, title=file.split("_")[1])
+    #     h5_to_vtp(filepath,
+    #               surf_name='train_loss',
+    #               log=True,
+    #               zmax=10.,
+    #               interp=1000,
+    #               xmin=-1.5,
+    #               xmax=1.5,
+    #               ymin=-1.5,
+    #               ymax=1.5)
         # plot_2d_contour(filepath, surf_name='train_acc', vmin=30.0, vmax=101., vlevel=5.0, show=False)

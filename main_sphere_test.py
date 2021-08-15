@@ -214,7 +214,7 @@ def run_experiment(args, experiment_keys, experiment_features, dsc=None, scope=N
         print('\n\n {} -----  BASE LOSS={:.4f}, ACCURACY={:.2f}\n\n'.format(exp_key, base_loss, base_acc))
         print(sample_file)
 
-        continue
+        # continue
         ################################## DEBUG ########################################
         # training_data_color = copy.deepcopy(round_two_datasets['color']['train'])
         # trainloader_color = data.DataLoader(training_data_color, batch_size=args.train_batch, shuffle=True,
@@ -338,7 +338,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=2000, type=int, metavar='N',
                         help='number of total epochs to run')

@@ -41,6 +41,10 @@ NSML COMMANDS
 - nsml run -e main_radius_rerun.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 - nsml run -e main_radius_rerun.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
+# --- feature test depth code
+
+- nsml run -e main_test_minimal_ffnet.py -d ColorDSpritesPruned --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
+- nsml run -e main_test_minimal_ffnet.py -d UTKFace --gpu-driver-version 418.67 --cpus 6 --memory 40000000000 --shm-size 500000000
 
 # to retrieve tflogs 							  
 - nsml download KR95157/ColorDSpritesPruned/26 Downloads -s /app/runs.zip

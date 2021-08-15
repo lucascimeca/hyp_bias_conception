@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
     print("retrieving solutions weights...")
     mode_folders = get_filenames(MODE_CONNECTIVITY_FOLDER)
-    for mode_folder in mode_folders:#
+    for mode_folder in mode_folders:
 
         feature_from = mode_folder.split("-")[0]
         feature_to = mode_folder.split("-")[-1]

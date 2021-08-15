@@ -92,7 +92,7 @@ def plot_shades(all_xs_data, all_ys_data, title='Loss', x_label='Epoch', y_label
                  color=feature_to_color_dict[label])
 
     plt.ylim((0, 105))
-    ax.set_title(f"Augmentation by {feature}")
+    ax.set_title(f"Radial accuracy from {feature.split('_')[0]} augmented minima")
     # ax.legend()
     ax.set_xlabel("Radial distance at initialization")
     ax.set_ylabel("Accuracy")

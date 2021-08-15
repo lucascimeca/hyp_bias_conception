@@ -22,15 +22,15 @@ import matplotlib
 
 ########### Color DSprites #################
 
-dsc = ColorDSpritesCreator(data_path='./../data/', filename='color_dsprites_pruned.h5')
-dsc.get_dataset_fvar(
-    number_of_samples=5000,
-    features_variants=('shape', 'scale', 'orientation', 'color'),
-    # features_variants=('color', 'shape'),
-    train_split=1.,
-    valid_split=0.
-)
-dsc.show_tasks()
+# dsc = ColorDSpritesCreator(data_path='./../data/', filename='color_dsprites_pruned.h5')
+# dsc.get_dataset_fvar(
+#     number_of_samples=5000,
+#     features_variants=('shape', 'scale', 'orientation', 'color'),
+#     # features_variants=('color', 'shape'),
+#     train_split=1.,
+#     valid_split=0.
+# )
+# dsc.show_tasks()
 
 ########## Multi DSprites (still black and white but multiple elements) #################
 # dsc = MultiDSpritesCreator(data_path='./../data/', filename='multi_bwdsprites.h5')

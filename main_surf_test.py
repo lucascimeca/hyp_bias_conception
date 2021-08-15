@@ -125,8 +125,8 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
         trainloader = data.DataLoader(training_data, batch_size=args.train_batch,
                                       shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
 
-        args.xmin, args.xmax, args.xnum = -3., 3., 51
-        args.ymin, args.ymax, args.ynum = -3., 3., 51
+        args.xmin, args.xmax, args.xnum = -2., 2., 51
+        args.ymin, args.ymax, args.ynum = -2., 2., 51
 
         #  -------------- MODEL --------------------------
         print("==> creating model '{}'".format(args.arch))
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     # Datasets
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-    parser.add_argument('--dataset', default='color', type=str, help='bw, color, multi and multicolor supported')
+    parser.add_argument('--dataset', default='face', type=str, help='bw, color, multi and multicolor supported')
     # Optimization options
     parser.add_argument('--epochs', default=25, type=int, metavar='N',
                         help='number of total epochs to run')

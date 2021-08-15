@@ -120,6 +120,114 @@ def convert_tb_data(root_dir, apply_row_limits=True):
     return numpy_dict
 
 
+def convert_tb_data_depth(root_dir, apply_row_limits=True):
+
+    # find all log files, extract and put them in dict.
+    data_dict = {}
+    row_limits = {}
+
+    for (root, _, filenames) in os.walk(root_dir):
+        for filename in filenames:
+            if "events.out.tfevents" not in filename:
+                continue
+
+            path_info = re.split("[(/)(\\\)]", root)
+
+            run_name = path_info[-3]
+            depth = path_info[-2]
+            exp_name = path_info[-1]
+
+            if run_name not in data_dict.keys():
+                data_dict[run_name] = {}
+                row_limits[run_name] = {}
+
+            if depth not in data_dict[run_name].keys():
+                data_dict[run_name][depth] = {}
+                row_limits[run_name][depth] = {}
+
+            if exp_name not in data_dict[run_name].keys():
+                data_dict[run_name][depth][exp_name] = {}
+
+            values_dict = {}
+            file_full_path = os.path.join(root, filename)
+            df = convert_tfevent(file_full_path)
+
+            if df.shape[0] == 0:
+                continue
+
+            df = df.sort_values(by=['wall_time'])
+
+            value_names = df['name'].unique()
+            for value_name in value_names:
+                if filename not in data_dict[run_name][depth][exp_name].keys():
+                    data_dict[run_name][depth][exp_name][filename] = {}
+
+                values = np.array(df.loc[df['name'] == value_name]['value']).astype(np.float64).reshape(-1, 1)
+                steps = np.array(df.loc[df['name'] == value_name]['step']).astype(np.float64).reshape(-1, 1)
+                times = np.array(df.loc[df['name'] == value_name]['wall_time']).astype(np.float64).reshape(-1, 1)
+
+                values_dict[value_name] = np.concatenate((times, steps, values), axis=1)
+
+                if value_name not in row_limits[run_name][depth] or row_limits[run_name][depth][value_name] > values.shape[0]:
+                    row_limits[run_name][depth][value_name] = values.shape[0]
+
+            data_dict[run_name][depth][exp_name][filename] = values_dict
+
+    numpy_dict = {}
+    for run_name in data_dict.keys():
+        for depth in data_dict[run_name].keys():
+            if depth not in numpy_dict.keys():
+                numpy_dict[depth] = {}
+            if run_name not in numpy_dict[depth].keys():
+                numpy_dict[depth][run_name] = {}
+            for exp_name in data_dict[run_name][depth].keys():
+                exp_name_base = exp_name + '/'
+
+                files = sorted(data_dict[run_name][depth][exp_name].keys())
+                for file in files:
+                    data = data_dict[run_name][depth][exp_name][file]
+                    for value_name in data.keys():
+                        exp_key = exp_name_base + value_name
+
+                        if exp_key not in numpy_dict[depth][run_name].keys():
+                            if apply_row_limits:
+                                numpy_dict[depth][run_name][exp_key] = data[value_name][:row_limits[run_name][depth][value_name], :].reshape(
+                                    (1, row_limits[run_name][depth][value_name], data[value_name].shape[-1]))
+                            else:
+                                numpy_dict[depth][run_name][exp_key] = data[value_name].reshape(
+                                    (1, data[value_name].shape[-2], data[value_name].shape[-1]))
+
+                        else:
+                            if apply_row_limits:
+                                numpy_dict[depth][run_name][exp_key] = np.concatenate(
+                                    (numpy_dict[run_name][exp_key], data[value_name][:row_limits[run_name][depth][value_name], :]
+                                     .reshape((1, row_limits[run_name][depth][value_name], data[value_name].shape[-1]))),
+                                    axis=0)
+                            else:
+                                if numpy_dict[depth][run_name][exp_key].shape[1] < data[value_name].shape[0]:
+                                    # create a zero array to fill the gap of unseen test data
+                                    fill = np.ones((numpy_dict[depth][run_name][exp_key].shape[0],
+                                                         data[value_name].shape[0] - numpy_dict[depth][run_name][exp_key].shape[1],
+                                                         numpy_dict[depth][run_name][exp_key].shape[2])) * -1
+                                    numpy_dict[depth][run_name][exp_key] = np.concatenate(
+                                        (numpy_dict[depth][run_name][exp_key], fill), axis=1
+                                    )
+
+                                elif numpy_dict[depth][run_name][exp_key].shape[1] > data[value_name].shape[0]:
+                                    # create a zero array to fill the gap of unseen test data
+                                    fill = np.ones((numpy_dict[depth][run_name][exp_key].shape[1] - data[value_name].shape[0],
+                                                         data[value_name].shape[1])) * -1
+
+                                    data[value_name] = np.concatenate(
+                                        (data[value_name], fill), axis=0
+                                    )
+
+                                numpy_dict[depth][run_name][exp_key] = np.concatenate(
+                                    (numpy_dict[depth][run_name][exp_key], data[value_name]
+                                     .reshape((1, data[value_name].shape[-2], data[value_name].shape[-1]))),
+                                    axis=0)
+    return numpy_dict
+
 def load_weight_data(root_dir):
 
     print("retrieving training & validation curves")

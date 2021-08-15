@@ -27,7 +27,7 @@ import h5py
 import numpy as np
 from scipy import interpolate
 
-def h5_to_vtp(surf_file, surf_name='train_loss', log=False, zmax=-1, interp=-1):
+def h5_to_vtp(surf_file, surf_name='train_loss', log=False, zmax=-1, interp=-1, xmin=None, xmax=None, ymin=None, ymax=None):
     #set this to True to generate points
     show_points = False
     #set this to True to generate polygons
@@ -38,9 +38,16 @@ def h5_to_vtp(surf_file, surf_name='train_loss', log=False, zmax=-1, interp=-1):
     [xcoordinates, ycoordinates] = np.meshgrid(f['xcoordinates'][:], f['ycoordinates'][:][:])
     vals = f[surf_name]
 
+
     x_array = xcoordinates[:].ravel()
     y_array = ycoordinates[:].ravel()
     z_array = vals[:].ravel()
+
+    if xmin is not None:
+        idexes = np.logical_and(np.logical_and(xmin < x_array,  x_array < xmax), np.logical_and(ymin < y_array, y_array < ymax))
+        x_array = x_array[idexes]
+        y_array = y_array[idexes]
+        z_array = z_array[idexes]
 
     # Interpolate the resolution up to the desired amount
     if interp > 0:
@@ -60,8 +67,8 @@ def h5_to_vtp(surf_file, surf_name='train_loss', log=False, zmax=-1, interp=-1):
 
     if log:
         z_array = np.log(z_array + 0.1)
-        vtp_file +=  "_log"
-    vtp_file +=  ".vtp"
+        vtp_file += "_log"
+    vtp_file += ".vtp"
     print("Here's your output file:{}".format(vtp_file))
 
     number_points = len(z_array)

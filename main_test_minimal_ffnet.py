@@ -15,12 +15,13 @@ import zipfile
 import sys
 import traceback
 import itertools
+import copy
 
 import nsml
 import models as models
 from models.convnet import ConvNet
 from models.resnet import ResNet
-from models.ffnet import FFNet
+from models.ffnet import FFNet, FFNetTest
 from timm.models.vision_transformer import VisionTransformer
 from nsml import GPU_NUM
 from nsml import PARALLEL_WORLD, PARALLEL_PORTS, MY_RANK
@@ -35,7 +36,6 @@ NSML = True
 TENSORBOARD_FOLDER = "./runs/"
 
 
-best_accuracies = {}  # best test accuracy
 global_step = 0
 
 
@@ -59,47 +59,52 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
     web_browser_opened = False
     folder_create(TENSORBOARD_FOLDER, exist_ok=True)
 
-    for exp_key in experiments.keys():
-        sample_no = 0
+    # Data
+    resize = None
+    if 'face' in args.dataset:
+        resize = (64, 64)
 
-        random.seed(args.manualSeed)
-        np.random.seed(args.manualSeed)
-        torch.manual_seed(args.manualSeed)
-        torch.cuda.manual_seed(args.manualSeed)
-        torch.cuda.manual_seed_all(args.manualSeed)
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
+    print('==> Preparing dataset dsprites ')
+    round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
+        number_of_samples=5000,
+        features_variants=experiments,
+        resize=resize,
+        train_split=0.7,
+        valid_split=0.3,
+    )
 
-        while sample_no < samples:
-            global global_step
+    num_classes = dsc.no_of_feature_lvs
 
-            # Data
-            resize = None
-            if 'face' in args.dataset:
-                resize = (64, 64)
+    # while sample_no < samples:
+    global global_step
 
-            print('==> Preparing dataset dsprites ')
-            round_one_dataset, round_two_datasets = dsc.get_dataset_fvar(
-                number_of_samples=5000,
-                features_variants=experiments[exp_key],
-                resize=resize,
-                train_split=0.7,
-                valid_split=0.3,
-            )
+    for depth in range(0, 15, 2):
 
-            num_classes = dsc.no_of_feature_lvs
+        for exp_key in sorted(experiments):
+
+            random.seed(args.manualSeed)
+            np.random.seed(args.manualSeed)
+            torch.manual_seed(args.manualSeed)
+            torch.cuda.manual_seed(args.manualSeed)
+            torch.cuda.manual_seed_all(args.manualSeed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
 
             # create train dataset for main diagonal -- round one
-            round_one_trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
-                                                    shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
+            training_data = copy.deepcopy(round_one_dataset['train'])
 
-            # create dataset for off diagonal, depending on task -- round two
-            round_two_trainloaders = {feature: data.DataLoader(round_two_datasets[feature]['train'],
-                                                               batch_size=args.train_batch, shuffle=True,
-                                                               num_workers=args.workers, worker_init_fn=seed_worker)
-                                      for feature in round_two_datasets.keys()}
+            # augment with offdiagonal if necessary
+            training_data.merge_new_dataset(round_two_datasets[exp_key]['train'])  # main diag
 
-            # create train all validation datasets
+            print("Data Length: {}".format(len(training_data)))
+
+            # create train dataset for main diagonal -- round one
+            trainloader = data.DataLoader(training_data,
+                                          batch_size=args.train_batch,
+                                          shuffle=True,
+                                          num_workers=args.workers,
+                                          worker_init_fn=seed_worker)
+
             testloaders = {"round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
                                                                                 batch_size=args.test_batch, shuffle=True,
                                                                                 num_workers=args.workers,
@@ -116,33 +121,11 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             else:
                 no_of_channels = 1
 
-            if args.arch.endswith('resnet'):
-                model = ResNet(
-                    num_classes=num_classes,
-                    depth=args.depth,
-                    no_of_channels=no_of_channels)
-                optimizer = optim.Adam(model.parameters())
-            elif args.arch.endswith('convnet'):
-                model = ConvNet(
-                    num_classes=num_classes,
-                    no_of_channels=no_of_channels)
-                optimizer = optim.Adam(model.parameters(),
-                                       weight_decay=1e-3)
-            elif args.arch.endswith('ffnet'):
-                model = FFNet(
-                    num_classes=num_classes,
-                    no_of_channels=no_of_channels)
-                optimizer = optim.Adam(model.parameters())
-            elif args.arch.endswith('vit'):
-                model = VisionTransformer(
-                    img_size=64, patch_size=8, embed_dim=192, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
-                    norm_layer=partial(nn.LayerNorm, eps=1e-6), num_classes=num_classes, in_chans=no_of_channels)
-                optimizer = optim.SGD(model.parameters(),
-                                      lr=5e-3,
-                                      momentum=0.9,
-                                      weight_decay=1e-4)
-            else:
-                raise NotImplementedError()
+            model = FFNetTest(
+                num_classes=num_classes,
+                no_of_channels=no_of_channels,
+                depth=depth)
+            optimizer = optim.Adam(model.parameters())
 
             model = nn.DataParallel(model).cuda()
 
@@ -158,7 +141,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 nsml.paused(scope=locals())
 
             # ---- LOGS folder ----
-            exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
+            exp_folder = "{}/{}/depth_{}/".format(TENSORBOARD_FOLDER, exp_key, depth)
             folder_create(exp_folder, exist_ok=True)
             logs_folder = exp_folder
 
@@ -167,24 +150,9 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
             task_writers = {}
             for task in testloaders.keys():
                 folder = "{}/{}/".format(logs_folder, task)
-                if folder_exists(folder):
-                    log_files = get_filenames(folder)
-                    if len(log_files) != 0:
-                        if sample_no == 0:
-                            print("Found data for run {}, Skipping {} samples.".format(
-                                experiments[exp_key],
-                                len(log_files))
-                            )
-                        sample_no = len(log_files)
-                        if sample_no >= samples:
-                            break
-
                 task_writers[task] = SummaryWriter(log_dir=folder)
 
-            if sample_no >= samples:
-                break
-
-            print("\n########### Experiment Set: {}, Sample: {} ###########\n".format(experiments[exp_key], sample_no))
+            print("\n########### Experiment Set: {}, Depth: {} ###########\n".format(experiments, depth))
 
             if not NSML:
                 # open tensorboard online
@@ -200,6 +168,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     web_browser_opened = True
 
             # Train and val round one
+            patience = 0
             start_time = time.time()
             for epoch in range(args.epochs):
 
@@ -207,7 +176,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 print('\nEpoch: [%d | %d]' % (epoch + 1, args.epochs))
                 losses = AverageMeter()
                 accuracies = AverageMeter()
-                for batch_idx, (_, inputs, targets) in enumerate(round_one_trainloader):
+                for batch_idx, (_, inputs, targets) in enumerate(trainloader):
                     model.train()
                     global_step += 1
                     inputs, targets = inputs.cuda(), targets.cuda(non_blocking=True)
@@ -235,7 +204,6 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     )
 
                     # update tensorboard if not in NSML
-                    # if not NSML:
                     task_writers['round_one'].add_scalar('round_one/train_loss', loss, epoch)
                     task_writers['round_one'].add_scalar('round_one/train_acc', acc, epoch)
 
@@ -247,6 +215,8 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
                 test_reports_loss = {}
                 test_reports_acc = {}
+                best_accuracies = {}  # best test accuracy
+
                 for task in testloaders.keys():
                     folder = "{}{}/".format(logs_folder, task)
                     test_loss, test_acc = test(testloaders[task], model, criterion,
@@ -277,7 +247,12 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                 # if any task improved then save
                 if update:
                     nsml.save(global_step)
+                    patience = 0
+                else:
+                    patience += 1
 
+                if patience >= 20 and epoch > 50:
+                    break
 
 
 def test(testloader, model, criterion, save=False, folder=''):
@@ -371,7 +346,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # Architecture (resnet, ffnet, vit, convnet)
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='ffnet',
                         choices=model_names,
                         help='model architecture: ' +
                              ' | '.join(model_names) +
@@ -397,61 +372,11 @@ if __name__ == '__main__':
     # Use CUDA
     use_cuda = int(GPU_NUM) != 0
 
-    if 'bw' in args.dataset:
-        combinations = itertools.combinations(['shape', 'scale', 'orientation', 'x_position'],
-                                              3)
-        experiments = {
-            "shape_scale_orientation": ('shape', 'scale', 'orientation'),
-            "scale_orientation": ('scale', 'orientation'),
-            "shape_scale": ('shape', 'scale'),
-            "shape_orientation": ('shape', 'orientation'),
-        }
-        dsc = BWDSpritesCreator(
-            data_path="./data/",
-            filename="dsprites.npz"
-        )
-    elif 'multicolor' in args.dataset:
-        # experiments
-        combinations = itertools.combinations(['shape', 'scale', 'orientation', 'object_number', 'color', 'x_position'],
-                                              5)
-        experiments = {}
-        for comb in combinations:
-            key = "_".join([str_elem.replace('_', '-') for str_elem in comb])
-            experiments[key] = comb
-        dsc = MultiColorDSpritesCreator(
-            data_path='./data/',
-            filename="multi_color_dsprites.h5"
-        )
-    elif 'color' in args.dataset:
-        experiments = {}
-        experiments['shape_scale_orientation'] = ('shape', 'scale', 'orientation')
-        experiments['shape_scale_orientation_color'] = ('shape', 'scale', 'orientation', 'color')
-        dsc = ColorDSpritesCreator(
-            data_path='./data/',
-            filename="color_dsprites_pruned.h5"
-        )
-    elif 'multi' in args.dataset:
-        # experiments
-        experiments = {
-            "shape_scale_orientation_object-number": ('shape', 'scale', 'orientation', 'object_number'),
-            "shape_scale_object-number": ('shape', 'scale', 'object_number'),
-            "shape_orientation_object-number": ('scale', 'orientation', 'object_number'),
-            "scale_object-number": ('scale', 'object_number'),
-        }
-        dsc = MultiDSpritesCreator(
-            data_path='./data/',
-            filename="multi_bwdsprites.h5"
-        )
-    elif 'face' in args.dataset:
-        experiments = {}
-        experiments['age_gender'] = ('age', 'gender')
-        experiments['age_gender_ethnicity'] = ('age', 'gender', 'ethnicity')
-        dsc = UTKFaceCreator(
-            data_path='./data/',
-            filename='UTKFace.h5'
-        )
-    else:
-        raise NotImplementedError(args.dataset)
+    experiments = ('shape', 'scale', 'orientation', 'color')
+    dsc = ColorDSpritesCreator(
+        data_path='./data/',
+        filename="color_dsprites_pruned.h5"
+    )
 
     try:
         run_experiment(args,
