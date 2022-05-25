@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="ubuntu@ec2-3-236-27-35.compute-1.amazonaws.com:22 (2)" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+    <serverData>
+      <paths name="ubuntu@ec2-3-236-27-35.compute-1.amazonaws.com:22 (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/ubuntu/Luca/hyp_bias_conception" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

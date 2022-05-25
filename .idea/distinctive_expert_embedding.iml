@@ -3,8 +3,9 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.9 (birl_ml-64)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Remote Python 3.7.12 (sftp://ubuntu@ec2-3-236-27-35.compute-1.amazonaws.com:22/home/ubuntu/anaconda3/envs/pytorch_latest_p37/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PackageRequirementsSettings">

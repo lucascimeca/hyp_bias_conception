@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.9 (birl_ml-64)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.7.12 (sftp://ubuntu@ec2-3-236-27-35.compute-1.amazonaws.com:22/home/ubuntu/anaconda3/envs/pytorch_latest_p37/bin/python)" project-jdk-type="Python SDK" />
 </project>
