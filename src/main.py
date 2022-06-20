@@ -1,5 +1,14 @@
 from __future__ import print_function
 
+"""
+Author: Luca Scimeca
+email: luca_scimeca@dfci.harvard.edu
+
+Run experiments for ranking of cues in WCST-ML. Running this code creates a 'runs' folder logging the experiment dynamics.
+To generate plots for this experiment run the code in  './utils/generate_learning_curve_figures.py' """
+
+
+
 import argparse
 import random
 import time
@@ -79,23 +88,18 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             num_classes = dsc.no_of_feature_lvs
 
-            # create train dataset for main diagonal -- round one
+            # create train dataset for main diagonal -- fully correlated dataset
             round_one_trainloader = data.DataLoader(round_one_dataset['train'], batch_size=args.train_batch,
                                                     shuffle=True, num_workers=args.workers, worker_init_fn=seed_worker)
 
-            # create dataset for off diagonal, depending on task -- round two
-            # round_two_trainloaders = {feature: data.DataLoader(round_two_datasets[feature]['train'],
-            #                                                    batch_size=args.train_batch, shuffle=True,
-            #                                                    num_workers=args.workers, worker_init_fn=seed_worker)
-            #                           for feature in round_two_datasets.keys()}
 
-            # create train all validation datasets
+            # create all validation datasets, one for each cue
             testloaders = {"round_two_task_{}".format(feature): data.DataLoader(round_two_datasets[feature]['valid'],
                                                                                 batch_size=args.test_batch, shuffle=True,
                                                                                 num_workers=args.workers,
                                                                                 worker_init_fn=seed_worker)
                            for feature in round_two_datasets.keys()}
-
+            # create a diagonal validation set too
             testloaders['round_one'] = data.DataLoader(round_one_dataset['valid'], batch_size=args.test_batch,
                                                        shuffle=True, num_workers=args.workers,
                                                        worker_init_fn=seed_worker)
@@ -142,16 +146,13 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             criterion = nn.CrossEntropyLoss()
 
-            # optimizer = optim.Adam(model.parameters())
-
-
             # ---- LOGS folder ----
             exp_folder = "{}{}/".format(TENSORBOARD_FOLDER, exp_key)
             folder_create(exp_folder, exist_ok=True)
             logs_folder = exp_folder
 
             # --- TensorBoard ----
-            # initialize Tensor Board
+            # initialize Tensor Board. We use Tensorflow to log the dynamics of training
             task_writers = {}
             for task in testloaders.keys():
                 folder = "{}/{}/".format(logs_folder, task)
@@ -174,20 +175,19 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
 
             print("\n########### Experiment Set: {}, Sample: {} ###########\n".format(experiments[exp_key], sample_no))
 
-            # open tensorboard online
-            tb = program.TensorBoard()
-            tb.configure(argv=[None,
-                               '--host', 'localhost',
-                               '--reload_interval', '15',
-                               '--port', '8080',
-                               '--logdir', TENSORBOARD_FOLDER])
-            url = tb.launch()
-            if not web_browser_opened:
-                webbrowser.open(url + '#timeseries')
-                web_browser_opened = True
+            # # open tensorboard online --- this can be commented out
+            # tb = program.TensorBoard()
+            # tb.configure(argv=[None,
+            #                    '--host', 'localhost',
+            #                    '--reload_interval', '15',
+            #                    '--port', '8080',
+            #                    '--logdir', TENSORBOARD_FOLDER])
+            # url = tb.launch()
+            # if not web_browser_opened:
+            #     webbrowser.open(url + '#timeseries')
+            #     web_browser_opened = True
 
             # Train and val round one
-            start_time = time.time()
             for epoch in range(args.epochs):
 
                 adjust_learning_rate(optimizer, epoch, args)
@@ -222,21 +222,18 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                       format(epoch, losses.avg, accuracies.avg))
 
                 print("TESTING ACCURACY")
-                update = False
 
                 test_reports_loss = {}
                 test_reports_acc = {}
                 for task in testloaders.keys():
                     folder = "{}{}/".format(logs_folder, task)
-                    test_loss, test_acc = test(testloaders[task], model, criterion,
-                                               save=epoch==args.epochs-1,
-                                               folder=folder)
+                    test_loss, test_acc = validate(testloaders[task], model, criterion,
+                                                   save=epoch==args.epochs-1,
+                                                   folder=folder)
                     test_reports_loss['test__loss_'+task] = test_loss
                     test_reports_acc['test__acc_'+task] = test_acc
                     if task not in best_accuracies.keys() or test_acc > best_accuracies[task]:
                         best_accuracies[task] = test_acc
-                        # if it is the best, save
-                        update = True
 
                     print("{} {}, BEST {}".format(task, test_acc, best_accuracies[task]))
 
@@ -246,8 +243,7 @@ def run_experiment(args, experiments=None, dsc=None, samples=10, scope=None):
                     task_writers[task].flush()
 
 
-
-def test(testloader, model, criterion, save=False, folder=''):
+def validate(testloader, model, criterion, save=False, folder=''):
     global global_step
     losses = AverageMeter()
     accuracies = AverageMeter()
@@ -311,15 +307,16 @@ def zipfolder(foldername, target_dir):
 if __name__ == '__main__':
 
     args = fetch_args()
-    args.dataset = 'bw'
+    #NOTE: THIS CODE OVERRIDES THE ARGUMENTS PASSED BY THE TERMINAL#
+    args.dataset = 'bw'    # select 'black and white d-sprites dataset'
     args.epochs = 120
-    args.arch = 'resnet20'
+    args.arch = 'resnet20'  # select resnet20 architecture
 
     state = {k: v for k, v in args._get_kwargs()}
 
     if 'bw' in args.dataset:
-        combinations = itertools.combinations(['shape', 'scale', 'orientation', 'x_position'],
-                                              3)
+        combinations = itertools.combinations(['shape', 'scale', 'orientation', 'x_position'], 3)
+        # dictionary of experiments to run. Each entry will create the corresponding treaning and test sets to run.
         experiments = {
             "shape_scale_orientation": ('shape', 'scale', 'orientation'),
             "scale_orientation": ('scale', 'orientation'),
@@ -328,7 +325,7 @@ if __name__ == '__main__':
         }
         dsc = BWDSpritesCreator(
             data_path="../data/",
-            filename="dsprites.hdf5"
+            filename="bw_dsprites.h5"
         )
     elif 'multicolor' in args.dataset:
         # experiments
@@ -377,7 +374,7 @@ if __name__ == '__main__':
         run_experiment(args,
                        experiments=experiments,
                        dsc=dsc,
-                       samples=10,
+                       samples=1,
                        scope=locals())
         print("done")
 

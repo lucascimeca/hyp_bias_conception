@@ -109,8 +109,8 @@ for i, t_value in enumerate(ts):
     previous_weights = weights.copy()
 
     utils.update_bn(loaders['train'], model, t=t)
-    tr_res = utils.test(loaders['train'], model, criterion, regularizer, t=t)
-    te_res = utils.test(loaders['test'], model, criterion, regularizer, t=t)
+    tr_res = utils.validate(loaders['train'], model, criterion, regularizer, t=t)
+    te_res = utils.validate(loaders['test'], model, criterion, regularizer, t=t)
     tr_loss[i] = tr_res['loss']
     tr_nll[i] = tr_res['nll']
     tr_acc[i] = tr_res['accuracy']

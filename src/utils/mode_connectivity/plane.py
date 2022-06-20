@@ -154,8 +154,8 @@ for i, alpha in enumerate(alphas):
 
         utils.update_bn(loaders['train'], base_model)
 
-        tr_res = utils.test(loaders['train'], base_model, criterion, regularizer)
-        te_res = utils.test(loaders['test'], base_model, criterion, regularizer)
+        tr_res = utils.validate(loaders['train'], base_model, criterion, regularizer)
+        te_res = utils.validate(loaders['test'], base_model, criterion, regularizer)
 
         tr_loss_v, tr_nll_v, tr_acc_v = tr_res['loss'], tr_res['nll'], tr_res['accuracy']
         te_loss_v, te_nll_v, te_acc_v = te_res['loss'], te_res['nll'], te_res['accuracy']

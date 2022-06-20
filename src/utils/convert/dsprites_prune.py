@@ -12,10 +12,8 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # Load dataset in BW
 # data_path = "../../data/"
 
-
 def folder_exists(folder_name):
     return pt.isdir(folder_name)
-
 
 def folder_create(folder_name, exist_ok=False, parents=True):
     path = Path(folder_name)
@@ -26,7 +24,6 @@ def folder_create(folder_name, exist_ok=False, parents=True):
     except Exception as e:
         raise e
     return True
-
 
 new_data_path = "../../../data/"
 if not folder_exists(new_data_path):
