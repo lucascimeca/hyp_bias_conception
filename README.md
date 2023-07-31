@@ -22,3 +22,12 @@ The src folder contains all code for the project. in 'src/utils/convert/' you ca
 
 ## License
 [GPL](https://www.gnu.org/licenses/#GPL)
+
+
+To cite the paper please use:
+@inproceedings{scimeca2022shortcut,
+  title={Which Shortcut Cues Will DNNs Choose? A Study from the Parameter-Space Perspective},
+  author={Scimeca, Luca and Oh, Seong Joon and Chun, Sanghyuk and Poli, Michael and Yun, Sangdoo},
+  booktitle={International Conference on Learning Representations},
+  year={2022}
+}
